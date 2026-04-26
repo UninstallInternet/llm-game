@@ -1,5 +1,4 @@
-import { getWorld, moveNpc } from '../game/state.js'
-import type { TimeOfDay } from '../../shared/types.js'
+import { getWorld, moveNpc, isNpcBusy } from '../game/state.js'
 
 interface NpcMovement {
   npcId: string
@@ -13,7 +12,8 @@ export function moveNpcsToSchedule(): NpcMovement[] {
   const movements: NpcMovement[] = []
 
   for (const npc of world.npcs) {
-    // Skip NPCs with active plans — they manage their own movement
+    // Skip NPCs that are busy (talking) or have active plans
+    if (isNpcBusy(npc.id)) continue
     if (npc.activePlan?.status === 'active') continue
 
     const scheduleEntry = npc.schedule.find((s) => s.timeSlot === currentTime)

@@ -5,6 +5,9 @@ import {
   addNpcKnowledge,
   updateNpcRelationship,
   updateNpcMoodGeneral,
+  isNpcBusy,
+  markNpcBusy,
+  markNpcFree,
 } from '../game/state.js'
 import { llmCall } from '../llm/client.js'
 import { buildNpcConversationPrompt } from '../llm/prompts.js'
@@ -90,15 +93,16 @@ function selectConversationPairs(world: WorldState): Array<[NPC, NPC]> {
     byLocation.set(npc.currentLocationId, group)
   }
 
-  // Score all co-located pairs
+  // Score all co-located pairs (excluding busy NPCs)
   const candidates: Array<{ pair: [NPC, NPC]; score: number }> = []
   for (const [_locId, npcs] of byLocation) {
-    if (npcs.length < 2) continue
-    for (let i = 0; i < npcs.length; i++) {
-      for (let j = i + 1; j < npcs.length; j++) {
-        const score = scorePair(npcs[i], npcs[j], world)
+    const available = npcs.filter((n) => !isNpcBusy(n.id))
+    if (available.length < 2) continue
+    for (let i = 0; i < available.length; i++) {
+      for (let j = i + 1; j < available.length; j++) {
+        const score = scorePair(available[i], available[j], world)
         if (score >= MIN_CONVERSATION_SCORE) {
-          candidates.push({ pair: [npcs[i], npcs[j]], score })
+          candidates.push({ pair: [available[i], available[j]], score })
         }
       }
     }
@@ -262,7 +266,15 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
   const results: NpcConversationResult[] = []
 
   for (const [npc1, npc2] of pairs) {
+    // Mark both as busy during conversation
+    markNpcBusy(npc1.id)
+    markNpcBusy(npc2.id)
+
     const result = await runConversation(npc1, npc2, world)
+
+    markNpcFree(npc1.id)
+    markNpcFree(npc2.id)
+
     if (!result) continue
 
     applyConversationResult(result, world)

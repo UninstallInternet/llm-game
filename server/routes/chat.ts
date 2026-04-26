@@ -11,6 +11,8 @@ import {
   addNpcKnowledge,
   isGameActive,
   persistGame,
+  markNpcBusy,
+  markNpcFree,
 } from '../game/state.js'
 import { v4 as uuid } from 'uuid'
 import { broadcastEvent } from './events.js'
@@ -52,10 +54,11 @@ chatRoutes.post('/', async (req, res) => {
       return
     }
 
-    // Mark NPC as known
+    // Mark NPC as known and busy (talking to player)
     if (!player.knownNpcIds.includes(npcId)) {
       player.knownNpcIds.push(npcId)
     }
+    markNpcBusy(npcId)
 
     // Save player turn
     addConversationTurn(npcId, {
@@ -140,4 +143,12 @@ chatRoutes.post('/', async (req, res) => {
     const message = error instanceof Error ? error.message : 'Unknown error'
     res.status(500).json({ success: false, error: message } satisfies ApiResponse<never>)
   }
+})
+
+chatRoutes.post('/end', (req, res) => {
+  const { npcId } = req.body as { npcId: string }
+  if (npcId) {
+    markNpcFree(npcId)
+  }
+  res.json({ success: true })
 })

@@ -23,6 +23,21 @@ let currentWorld: WorldState | null = null
 let currentPlayer: Player | null = null
 let saveId: string = uuid()
 
+// Track NPCs currently "busy" (talking to player or in NPC-to-NPC conversation)
+const busyNpcIds = new Set<string>()
+
+export function markNpcBusy(npcId: string): void {
+  busyNpcIds.add(npcId)
+}
+
+export function markNpcFree(npcId: string): void {
+  busyNpcIds.delete(npcId)
+}
+
+export function isNpcBusy(npcId: string): boolean {
+  return busyNpcIds.has(npcId)
+}
+
 export function getWorld(): WorldState {
   if (!currentWorld) throw new Error('No world loaded')
   return currentWorld

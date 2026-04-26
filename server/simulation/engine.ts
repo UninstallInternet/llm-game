@@ -3,6 +3,7 @@ import {
   isGameActive,
   advanceTime,
   persistGame,
+  isNpcBusy,
 } from '../game/state.js'
 import { broadcastEvent } from '../routes/events.js'
 import { moveNpcsToSchedule } from './npc-behavior.js'
@@ -67,6 +68,7 @@ async function runTick(): Promise<void> {
 
     for (const npc of updatedWorld.npcs) {
       if (llmBudget <= 0) break
+      if (isNpcBusy(npc.id)) continue // skip NPCs in conversation
 
       const result = await processNpcTurn(npc, updatedWorld)
       llmBudget -= result.llmCalls

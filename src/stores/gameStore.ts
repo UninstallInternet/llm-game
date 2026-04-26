@@ -65,7 +65,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
   addGenerationMessage: (message) =>
     set((state) => ({ generationMessages: [...state.generationMessages, message] })),
   clearGenerationMessages: () => set({ generationMessages: [] }),
-  setCurrentNpc: (currentNpc) => set({ currentNpc }),
+  setCurrentNpc: (newNpc) => {
+    const prev = get().currentNpc
+    // Free the previous NPC from conversation
+    if (prev && prev.id !== newNpc?.id) {
+      fetch('/api/chat/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ npcId: prev.id }),
+      }).catch(() => {})
+    }
+    set({ currentNpc: newNpc })
+  },
   setChatLoading: (chatLoading) => set({ chatLoading }),
   toggleDebug: () => set((state) => ({ showDebug: !state.showDebug })),
   setLastChatDebug: (lastChatDebug) => set({ lastChatDebug }),
