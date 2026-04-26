@@ -145,7 +145,8 @@ ${locationDetails}
 
 INSTRUCTIONS:
 - Create a plan with 2-6 concrete steps to pursue your secret goal.
-- Actions can be ANYTHING plausible: search, travel, recruit, charm, intimidate, fight, sabotage, steal, heal, build, observe, confront, seduce, deceive, hide, share_info, use_item, etc.
+- Actions can be ANYTHING plausible — both physical and social: search, travel, recruit, charm, intimidate, fight, sabotage, steal, heal, build, observe, confront, seduce, deceive, hide, share_info, use_item, barricade, sneak, repair, hack, lockpick, bribe, threaten, etc.
+- Choose the right action for the situation. Sometimes talking is the best move (recruiting an ally, extracting info). Sometimes physical action is needed (searching, breaking in, fighting). A good plan mixes both.
 - Use real location IDs (loc_X) for travel targets.
 - Use real NPC names for social targets.
 - Consider who you trust, who might help, who might oppose you.

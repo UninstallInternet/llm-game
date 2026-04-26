@@ -152,7 +152,7 @@ export function ChatPanel() {
                   {turn.role === 'npc' && (
                     <span className="text-xs text-amber-400 font-medium block mb-1">{currentNpc.name}</span>
                   )}
-                  {turn.content}
+                  <FormattedText text={turn.content} />
                 </div>
               </div>
             ))}
@@ -275,5 +275,20 @@ export function ChatPanel() {
         </form>
       </div>
     </div>
+  )
+}
+
+// Renders *action text* as italic and regular text as normal
+function FormattedText({ text }: { text: string }) {
+  const parts = text.split(/(\*[^*]+\*)/)
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (part.startsWith('*') && part.endsWith('*')) {
+          return <em key={i} className="text-gray-400 not-italic text-xs">{part.slice(1, -1)}</em>
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </span>
   )
 }

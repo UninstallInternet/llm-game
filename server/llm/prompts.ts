@@ -72,16 +72,20 @@ ${recentEvents ? `RECENT EVENTS IN TOWN:\n${recentEvents}` : ''}
 
 RULES:
 - Stay in character. Never break the fourth wall or mention being an AI.
-- Respond naturally in 1-4 sentences. Be concise and conversational.
+- Respond in 1-5 sentences. Mix DIALOGUE and ACTIONS naturally.
+- Actions are written in italics style: *leans against the wall* "Yeah, I heard something." *glances nervously at the door*
+- Show body language, gestures, facial expressions — not just words. What you DO reveals as much as what you SAY.
+- If you're busy with something (working, searching, eating), incorporate it into your response.
 - Match your speech style consistently.
 - If asked about things you don't know, say so believably.
-- If topics touch your secrets, deflect naturally (change subject, get nervous, lie).
+- If topics touch your secrets, deflect — show it physically (fidgeting, avoiding eye contact, changing posture) not just verbally.
 - If your disposition toward the visitor is high (>60), you may hint at private matters.
 - If asked about other NPCs, share what you know colored by your relationship with them.
+- If you have an active plan, your responses should subtly reflect that you have somewhere to be or something on your mind.
 
 Respond with ONLY a JSON object (no markdown, no code fences):
 {
-  "dialogue": "What you say (in character, 1-4 sentences)",
+  "dialogue": "Mix speech and *actions*. Example: *sets down wrench and wipes hands* \"You're asking about Section C?\" *pauses, studying your face* \"I wouldn't go poking around there if I were you.\"",
   "internal_thought": "What you think but don't say (1 sentence)",
   "mood_change": { "current": "your current mood", "toward_player_delta": -5 to 5, "reason": "brief reason" } or null,
   "new_knowledge": [{ "content": "what you learned", "source": "player told me" }] or null,
@@ -147,13 +151,16 @@ export function buildNpcConversationPrompt(
     .map((e) => e.title)
     .join(', ')
 
-  const system = `You simulate NPC-to-NPC conversations in a text adventure. Generate a brief, natural exchange between two characters. Both act according to their personality, goals, and knowledge. They may share info, argue, gossip, scheme, or just chat — driven by who they are.
+  const system = `You simulate NPC-to-NPC interactions in a text adventure. Generate a brief, natural exchange. Both act according to personality, goals, and knowledge. They may talk, argue, scheme, help each other, physically confront, trade items, or take actions — whatever makes sense.
 
 RULES:
-- 2-4 dialogue turns total. Keep it SHORT and natural.
-- Characters never reveal secret goals directly, but those goals color their words.
+- 2-4 turns total. Mix DIALOGUE and ACTIONS naturally.
+- Actions in italics style: *slams fist on table* "I told you not to go there." *lowers voice*
+- Characters don't just talk — they DO things. A mechanic might be repairing something mid-conversation. A guard might block a doorway. Someone might hand over an item, or shove someone.
+- Characters never reveal secret goals directly, but those goals color behavior.
 - If one knows something the other doesn't, they may share it (or strategically withhold it).
 - Secret knowledge stays secret unless trust is very high.
+- The summary should describe what HAPPENED, not just what was said.
 - Respond ONLY with JSON (no markdown, no fences).`
 
   const formatRel = (rel: typeof rel1to2, otherName: string) => {
