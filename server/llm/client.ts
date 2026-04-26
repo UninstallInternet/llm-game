@@ -6,7 +6,7 @@ if (!apiKey) {
   throw new Error('OPENAI_API_KEY not configured. Set it in .env')
 }
 
-const openai = new OpenAI({ apiKey, timeout: 30000 })
+const openai = new OpenAI({ apiKey, timeout: 120000 })
 
 export type ModelTier = 'worldGen' | 'conversation' | 'simulation'
 
