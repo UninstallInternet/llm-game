@@ -1,4 +1,5 @@
 import { useGameStore } from '../../stores/gameStore'
+import type { WorldState, Player } from '../../../shared/types'
 import { LocationPanel } from '../world/LocationPanel'
 import { LocationNav } from '../world/LocationNav'
 import { WorldMap } from '../world/WorldMap'
@@ -24,6 +25,15 @@ export function GameLayout() {
           <span className="text-sm text-gray-400">{world.settingDescription.slice(0, 80)}...</span>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => {
+              fetch('/api/game/save', { method: 'POST' }).catch(() => {})
+              useGameStore.getState().setGameState(null as unknown as WorldState, null as unknown as Player)
+            }}
+            className="px-3 py-1 text-xs rounded border bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            Menu
+          </button>
           <button
             onClick={toggleDebug}
             className={`px-3 py-1 text-xs rounded border transition-colors ${

@@ -8,24 +8,76 @@ interface NodePosition {
   y: number
 }
 
+// Force-directed layout: connected nodes attract, all nodes repel
 function layoutNodes(locations: Location[]): NodePosition[] {
-  // Simple circular layout with center node
   const count = locations.length
   if (count === 0) return []
 
-  const cx = 200
-  const cy = 150
-  const radius = Math.min(120, 40 + count * 12)
+  const W = 380
+  const H = 260
+  const PAD = 40
 
-  return locations.map((loc, i) => {
-    if (i === 0) return { id: loc.id, x: cx, y: cy }
-    const angle = ((i - 1) / (count - 1)) * Math.PI * 2 - Math.PI / 2
-    return {
-      id: loc.id,
-      x: cx + Math.cos(angle) * radius,
-      y: cy + Math.sin(angle) * radius,
+  // Initialize positions in a grid to avoid overlap
+  const cols = Math.ceil(Math.sqrt(count))
+  const positions: NodePosition[] = locations.map((loc, i) => ({
+    id: loc.id,
+    x: PAD + ((i % cols) / Math.max(1, cols - 1)) * (W - PAD * 2) + (Math.random() - 0.5) * 20,
+    y: PAD + (Math.floor(i / cols) / Math.max(1, Math.ceil(count / cols) - 1)) * (H - PAD * 2) + (Math.random() - 0.5) * 20,
+  }))
+
+  // Build adjacency for spring forces
+  const adjSet = new Set<string>()
+  for (const loc of locations) {
+    for (const conn of loc.connections) {
+      adjSet.add(`${loc.id}|${conn}`)
     }
-  })
+  }
+
+  const isConnected = (a: string, b: string) => adjSet.has(`${a}|${b}`) || adjSet.has(`${b}|${a}`)
+
+  // Run force simulation (50 iterations)
+  for (let iter = 0; iter < 60; iter++) {
+    const forces = positions.map(() => ({ fx: 0, fy: 0 }))
+
+    for (let i = 0; i < count; i++) {
+      for (let j = i + 1; j < count; j++) {
+        const dx = positions[j].x - positions[i].x
+        const dy = positions[j].y - positions[i].y
+        const dist = Math.max(10, Math.sqrt(dx * dx + dy * dy))
+        const nx = dx / dist
+        const ny = dy / dist
+
+        // Repulsion (all pairs)
+        const repulsion = 3000 / (dist * dist)
+        forces[i].fx -= nx * repulsion
+        forces[i].fy -= ny * repulsion
+        forces[j].fx += nx * repulsion
+        forces[j].fy += ny * repulsion
+
+        // Attraction (connected pairs only)
+        if (isConnected(positions[i].id, positions[j].id)) {
+          const idealDist = 80
+          const attraction = (dist - idealDist) * 0.05
+          forces[i].fx += nx * attraction
+          forces[i].fy += ny * attraction
+          forces[j].fx -= nx * attraction
+          forces[j].fy -= ny * attraction
+        }
+      }
+    }
+
+    // Apply forces with damping
+    const damping = 0.3
+    for (let i = 0; i < count; i++) {
+      positions[i].x += forces[i].fx * damping
+      positions[i].y += forces[i].fy * damping
+      // Clamp to bounds
+      positions[i].x = Math.max(PAD, Math.min(W - PAD, positions[i].x))
+      positions[i].y = Math.max(PAD, Math.min(H - PAD, positions[i].y))
+    }
+  }
+
+  return positions
 }
 
 export function WorldMap() {
@@ -37,7 +89,9 @@ export function WorldMap() {
 
   const positions = useMemo(
     () => (world ? layoutNodes(world.locations) : []),
-    [world?.locations]
+    // Stable key: only relayout when location count/ids change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [world?.locations.map((l) => l.id).join(',')]
   )
 
   const handleMove = useCallback(
@@ -67,10 +121,9 @@ export function WorldMap() {
 
   const currentLoc = world.locations.find((l) => l.id === player.currentLocationId)
   const connectedIds = new Set(currentLoc?.connections ?? [])
-
   const posMap = new Map(positions.map((p) => [p.id, p]))
 
-  // Draw edges
+  // Build unique edges
   const edges: Array<{ from: NodePosition; to: NodePosition; key: string }> = []
   const edgeSet = new Set<string>()
   for (const loc of world.locations) {
@@ -86,11 +139,11 @@ export function WorldMap() {
   }
 
   return (
-    <div className="p-2">
-      <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 px-2">
-        Station Map
+    <div className="p-2 border-b border-gray-800">
+      <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 px-2">
+        Map
       </h3>
-      <svg viewBox="0 0 400 300" className="w-full" style={{ maxHeight: '220px' }}>
+      <svg viewBox="0 0 380 260" className="w-full" style={{ maxHeight: '200px' }}>
         {/* Edges */}
         {edges.map((e) => {
           const isPlayerPath =
@@ -105,7 +158,7 @@ export function WorldMap() {
               y2={e.to.y}
               stroke={isPlayerPath ? '#d97706' : '#374151'}
               strokeWidth={isPlayerPath ? 2 : 1}
-              opacity={isPlayerPath ? 0.8 : 0.4}
+              opacity={isPlayerPath ? 0.8 : 0.3}
             />
           )
         })}
@@ -126,70 +179,52 @@ export function WorldMap() {
               onClick={() => isConnected && !isPlayer ? handleMove(pos.id) : undefined}
               className={isConnected && !isPlayer ? 'cursor-pointer' : ''}
             >
-              {/* Glow for player location */}
               {isPlayer && (
-                <circle cx={pos.x} cy={pos.y} r={22} fill="#d97706" opacity={0.15} />
+                <circle cx={pos.x} cy={pos.y} r={22} fill="#d97706" opacity={0.12} />
               )}
-
-              {/* Node circle */}
               <circle
                 cx={pos.x}
                 cy={pos.y}
-                r={16}
+                r={14}
                 fill={isPlayer ? '#92400e' : isConnected ? '#1f2937' : '#111827'}
                 stroke={isPlayer ? '#d97706' : isConnected ? '#4b5563' : '#1f2937'}
                 strokeWidth={isPlayer ? 2.5 : 1.5}
               />
 
-              {/* NPC count badge */}
               {npcsHere > 0 && (
                 <>
-                  <circle cx={pos.x + 12} cy={pos.y - 12} r={7} fill="#1e40af" />
-                  <text
-                    x={pos.x + 12}
-                    y={pos.y - 8}
-                    textAnchor="middle"
-                    fill="white"
-                    fontSize={9}
-                    fontWeight="bold"
-                  >
+                  <circle cx={pos.x + 11} cy={pos.y - 11} r={6} fill="#1e40af" />
+                  <text x={pos.x + 11} y={pos.y - 7.5} textAnchor="middle" fill="white" fontSize={8} fontWeight="bold">
                     {npcsHere}
                   </text>
                 </>
               )}
 
-              {/* Lock icon for secure areas */}
-              {locked && (
-                <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={12}>
+              {locked && !isPlayer && (
+                <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={10}>
                   &#x1F512;
                 </text>
               )}
 
-              {/* Location name */}
+              {isPlayer && (
+                <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={11}>
+                  &#x1F464;
+                </text>
+              )}
+
               <text
                 x={pos.x}
-                y={pos.y + 28}
+                y={pos.y + 24}
                 textAnchor="middle"
                 fill={isPlayer ? '#fbbf24' : isConnected ? '#9ca3af' : '#4b5563'}
-                fontSize={9}
+                fontSize={8}
                 fontWeight={isPlayer ? 'bold' : 'normal'}
               >
-                {loc.name.length > 20 ? loc.name.slice(0, 18) + '..' : loc.name}
+                {loc.name.length > 22 ? loc.name.slice(0, 20) + '..' : loc.name}
               </text>
             </g>
           )
         })}
-
-        {/* Player indicator */}
-        {(() => {
-          const playerPos = posMap.get(player.currentLocationId)
-          if (!playerPos) return null
-          return (
-            <text x={playerPos.x} y={playerPos.y + 5} textAnchor="middle" fontSize={14}>
-              &#x1F464;
-            </text>
-          )
-        })()}
       </svg>
     </div>
   )
