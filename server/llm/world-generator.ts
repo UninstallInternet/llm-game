@@ -12,7 +12,37 @@ import type {
   KnowledgeEntry,
   ScheduleEntry,
   TimeOfDay,
+  Item,
 } from '../../shared/types.js'
+
+const OCCUPATION_TAG_MAP: Record<string, string[]> = {
+  mechanic: ['mechanical-repair', 'tool-use', 'vehicle-knowledge'],
+  blacksmith: ['metalwork', 'tool-use', 'forge-operation'],
+  scientist: ['lab-equipment', 'data-analysis', 'chemical-handling'],
+  doctor: ['medical-knowledge', 'first-aid', 'anatomy'],
+  healer: ['medical-knowledge', 'herbalism', 'first-aid'],
+  herbalist: ['herbalism', 'plant-knowledge', 'medicine'],
+  guard: ['weapons', 'combat', 'surveillance'],
+  soldier: ['weapons', 'combat', 'tactics'],
+  sheriff: ['weapons', 'law-enforcement', 'investigation'],
+  merchant: ['trade', 'negotiation', 'appraisal'],
+  cook: ['cooking', 'food-preparation', 'knife-skills'],
+  farmer: ['agriculture', 'animal-handling', 'weather-knowledge'],
+  miner: ['excavation', 'geology', 'tool-use'],
+  engineer: ['mechanical-repair', 'electrical', 'construction'],
+  priest: ['religion', 'persuasion', 'literacy'],
+  librarian: ['literacy', 'research', 'history'],
+  spy: ['stealth', 'deception', 'investigation'],
+  thief: ['stealth', 'lockpicking', 'agility'],
+}
+
+function deriveOccupationTags(occupation: string): string[] {
+  const lower = occupation.toLowerCase()
+  for (const [key, tags] of Object.entries(OCCUPATION_TAG_MAP)) {
+    if (lower.includes(key)) return tags
+  }
+  return ['general-knowledge']
+}
 
 type ProgressCallback = (phase: string, message: string) => void
 
@@ -26,6 +56,10 @@ interface RawWorldData {
     connections: string[]
     isPublic: boolean
     ownerId: string | null
+    tags?: string[]
+    securityLevel?: number
+    containers?: Array<{ name: string; tags?: string[]; searchDifficulty?: number; expectedItemTypes?: string[] }>
+    fixtures?: string[]
   }>
   factions: Array<{
     id: string
@@ -55,6 +89,8 @@ interface RawWorldData {
       notes?: string
     }>
     factionId: string | null
+    occupationTags?: string[]
+    startingItems?: Array<{ name: string; tags: string[]; description: string }>
     scheduleLocationIds: Record<string, string>
   }>
   mysteries: Array<{
@@ -120,6 +156,18 @@ export async function generateWorld(
     connections: loc.connections,
     isPublic: loc.isPublic,
     ownerId: loc.ownerId,
+    tags: loc.tags ?? [loc.type],
+    securityLevel: loc.securityLevel ?? 0,
+    containers: (loc.containers ?? []).map((c, i) => ({
+      id: `${loc.id}_cont_${i}`,
+      name: c.name,
+      tags: c.tags ?? [],
+      searchDifficulty: c.searchDifficulty ?? 1,
+      searched: false,
+      expectedItemTypes: c.expectedItemTypes ?? [],
+    })),
+    fixtures: loc.fixtures ?? [],
+    items: [],
   }))
 
   // Enforce bidirectional connections: if A -> B, then B -> A
@@ -200,6 +248,7 @@ export async function generateWorld(
         }
       }),
       knowledge: [],
+      beliefs: [],
       mood: {
         current: 'neutral',
         toward_player: 0,
@@ -208,6 +257,16 @@ export async function generateWorld(
       schedule,
       currentLocationId: startLocation,
       factionId: n.factionId,
+      occupationTags: n.occupationTags ?? deriveOccupationTags(n.occupation),
+      inventory: (n.startingItems ?? []).map((item, i) => ({
+        id: `${n.id}_item_${i}`,
+        name: item.name,
+        tags: item.tags,
+        locationId: null,
+        ownerId: n.id,
+        description: item.description,
+      })),
+      activePlan: null,
     }
   })
 

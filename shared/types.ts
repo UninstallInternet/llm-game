@@ -56,6 +56,7 @@ export interface NPC {
   name: string
   age: number
   occupation: string
+  occupationTags: string[]  // ["mechanical-repair", "tool-use"]
   personality: NPCPersonality
   appearance: string
   goals: {
@@ -65,6 +66,7 @@ export interface NPC {
   secrets: string[]
   relationships: Relationship[]
   knowledge: KnowledgeEntry[]
+  beliefs: BeliefEntry[]
   mood: {
     current: string
     toward_player: number // -100 to 100
@@ -73,6 +75,61 @@ export interface NPC {
   schedule: ScheduleEntry[]
   currentLocationId: string
   factionId: string | null
+  inventory: Item[]
+  activePlan: NpcPlan | null
+}
+
+// ─── Items & Containers ───
+
+export interface Item {
+  id: string
+  name: string
+  tags: string[]          // ["tool", "cutting", "heavy"]
+  locationId: string | null
+  ownerId: string | null
+  description: string
+}
+
+export interface LocationContainer {
+  id: string
+  name: string            // "tool chest", "filing cabinet"
+  tags: string[]          // ["locked", "metal"]
+  searchDifficulty: number // 0-5
+  searched: boolean
+  expectedItemTypes: string[]
+}
+
+// ─── NPC Planning ───
+
+export type PlanAction = 'search' | 'travel' | 'recruit' | 'use_item' | 'attempt_objective' | 'observe' | 'confront' | 'share_info'
+
+export interface PlanStep {
+  action: PlanAction
+  target: string          // location ID, NPC ID, or item description
+  description: string
+  status: 'pending' | 'active' | 'completed' | 'failed' | 'skipped'
+  result?: string
+}
+
+export interface NpcPlan {
+  id: string
+  goal: string
+  motivation: string
+  steps: PlanStep[]
+  allies: string[]
+  status: 'forming' | 'active' | 'paused' | 'completed' | 'abandoned'
+  formedAtTick: number
+}
+
+// ─── Belief Ledger ───
+
+export interface BeliefEntry {
+  proposition: string
+  source: string          // NPC ID or "observed" or "inferred"
+  confidence: number
+  corroboratedBy: string[]
+  contradictedBy: string[]
+  tick: number
 }
 
 export interface Location {
@@ -80,9 +137,14 @@ export interface Location {
   name: string
   type: string
   description: string
-  connections: string[] // IDs of connected locations
+  connections: string[]
   isPublic: boolean
   ownerId: string | null
+  tags: string[]                    // ["indoor", "secure", "workshop"]
+  securityLevel: number             // 0=open, 1=social, 2=locked, 3=keycard, 4=biometric, 5=vault
+  containers: LocationContainer[]
+  fixtures: string[]                // immovable features: ["control-panel", "furnace"]
+  items: Item[]                     // loose items at this location
 }
 
 export interface Faction {
@@ -109,6 +171,15 @@ export interface Mystery {
   clues: Clue[]
   resolution: string // hidden truth
   isResolved: boolean
+}
+
+// ─── Action Resolution ───
+
+export interface JudgeResult {
+  probability: number     // 1-99
+  reasoning: string
+  outcome: 'strong_success' | 'partial_success' | 'failure'
+  narrativeHint: string   // brief description of what happened
 }
 
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night'
@@ -238,5 +309,8 @@ export type GameEvent =
       npc1MoodShift: string | null; npc2MoodShift: string | null
       relationshipDeltas: { npc1: number; npc2: number }
     } }
+  | { type: 'npc_plan'; data: { npcId: string; goal: string; status: string; stepCount: number } }
+  | { type: 'npc_action_result'; data: { npcId: string; action: string; outcome: string; description: string } }
+  | { type: 'item_found'; data: { npcId: string; itemName: string; locationId: string } }
   | { type: 'world_generated'; data: { phase: string; message: string } }
   | { type: 'simulation_tick'; data: { tick: number; time: GameTime } }

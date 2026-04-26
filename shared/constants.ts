@@ -26,7 +26,7 @@ export const LLM_MODELS = {
 } as const
 
 export const MAX_CONVERSATION_HISTORY = 20
-export const MAX_SIMULATION_LLM_CALLS_PER_TICK = 5
+export const MAX_SIMULATION_LLM_CALLS_PER_TICK = 8
 
 // ─── NPC Conversation Config ───
 export const MAX_NPC_CONVERSATIONS_PER_TICK = 2
@@ -37,3 +37,10 @@ export const MEMORY_DECAY_RATE = 0.95 // per tick
 export const MEMORY_WEIGHT_IMPORTANCE = 2.0
 export const MEMORY_WEIGHT_RECENCY = 0.5
 export const TOP_K_MEMORIES = 5
+
+// ─── NPC Autonomy Config ───
+export const ACTIVATION_THRESHOLD_LOW = 0.3
+export const ACTIVATION_THRESHOLD_HIGH = 0.6
+export const MAX_PLAN_STEPS = 8
+export const SEARCH_BASE_SUCCESS_RATE = 0.6  // base chance of finding item when searching
+export const SEARCH_SKILL_BONUS = 0.2        // bonus for matching occupation tags

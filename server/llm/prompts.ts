@@ -233,7 +233,11 @@ Respond with ONLY a JSON object (no markdown, no code fences) matching this stru
       "description": "2-3 sentence atmospheric description",
       "connections": ["loc_2", "loc_3"],
       "isPublic": true,
-      "ownerId": null or "npc_X"
+      "ownerId": null or "npc_X",
+      "tags": ["indoor", "workshop"],
+      "securityLevel": 0,
+      "containers": [{"name": "tool chest", "expectedItemTypes": ["tools", "parts"], "searchDifficulty": 1}],
+      "fixtures": ["workbench", "anvil"]
     }
   ],
   "factions": [
