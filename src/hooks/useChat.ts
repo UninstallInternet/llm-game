@@ -1,11 +1,9 @@
 import { useCallback } from 'react'
 import { useGameStore } from '../stores/gameStore.js'
-import type { ApiResponse, ChatResponse } from '../../shared/types.js'
+import type { ApiResponse, ChatResponse, GameStateResponse } from '../../shared/types.js'
 
 export function useChat() {
   const setChatLoading = useGameStore((s) => s.setChatLoading)
-  const addConversationTurn = useGameStore((s) => s.addConversationTurn)
-  const world = useGameStore((s) => s.world)
 
   const sendMessage = useCallback(
     async (npcId: string, message: string): Promise<ChatResponse | null> => {
@@ -22,20 +20,9 @@ export function useChat() {
           throw new Error(json.error ?? 'Chat failed')
         }
 
-        addConversationTurn(npcId, {
-          role: 'player',
-          content: message,
-          tick: world?.currentTick ?? 0,
-        })
-
-        addConversationTurn(npcId, {
-          role: 'npc',
-          content: json.data.dialogue,
-          tick: world?.currentTick ?? 0,
-        })
-
         // Store debug reasoning
         if (json.data.debug) {
+          const world = useGameStore.getState().world
           const npc = world?.npcs.find((n) => n.id === npcId)
           useGameStore.getState().setLastChatDebug({
             ...json.data.debug,
@@ -50,14 +37,13 @@ export function useChat() {
           })
         }
 
-        // Refresh full game state to pick up NPC mood/knowledge changes
+        // Refresh full game state — server already stored the conversation turns
         try {
           const stateRes = await fetch('/api/game/state')
-          const stateJson = (await stateRes.json()) as ApiResponse<{ world: import('../../shared/types.js').WorldState; player: import('../../shared/types.js').Player }>
+          const stateJson = (await stateRes.json()) as ApiResponse<GameStateResponse>
           if (stateJson.success && stateJson.data) {
             const store = useGameStore.getState()
             store.setGameState(stateJson.data.world, stateJson.data.player)
-            // Re-set currentNpc from updated world data
             const updatedNpc = stateJson.data.world.npcs.find((n) => n.id === npcId)
             if (updatedNpc) store.setCurrentNpc(updatedNpc)
           }
@@ -65,13 +51,14 @@ export function useChat() {
 
         return json.data
       } catch (error) {
-        console.error('Chat error:', error)
+        const msg = error instanceof Error ? error.message : 'Unknown error'
+        useGameStore.getState().addEventLog(`Chat error: ${msg}`)
         return null
       } finally {
         setChatLoading(false)
       }
     },
-    [setChatLoading, addConversationTurn, world]
+    [setChatLoading]
   )
 
   return { sendMessage }
