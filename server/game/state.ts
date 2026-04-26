@@ -56,10 +56,61 @@ export function isGameActive(): boolean {
   return currentWorld !== null && currentPlayer !== null
 }
 
+function migratePlayer(player: Partial<Player>): Player {
+  return {
+    currentLocationId: player.currentLocationId ?? '',
+    knownNpcIds: player.knownNpcIds ?? [],
+    knownLocationIds: player.knownLocationIds ?? [],
+    notes: player.notes ?? [],
+    conversationHistory: player.conversationHistory ?? {},
+    inventory: player.inventory ?? [],
+    physical: player.physical ?? { health: 100, energy: 100, injuries: [], status: 'alive' as const },
+    actionLog: player.actionLog ?? [],
+  }
+}
+
+function migrateNpc(npc: Partial<NPC>): NPC {
+  return {
+    ...npc,
+    occupationTags: npc.occupationTags ?? ['general-knowledge'],
+    beliefs: npc.beliefs ?? [],
+    inventory: npc.inventory ?? [],
+    activePlan: npc.activePlan ?? null,
+    physical: npc.physical ?? { health: 100, energy: 100, injuries: [], status: 'alive' as const },
+    knowledge: (npc.knowledge ?? []).map((k) => ({
+      ...k,
+      importance: k.importance ?? 0.5,
+    })),
+    relationships: (npc.relationships ?? []).map((r) => ({
+      ...r,
+      trust: r.trust ?? (r as { strength?: number }).strength ?? 0,
+      affection: r.affection ?? 0,
+      respect: r.respect ?? 0,
+      fear: r.fear ?? 0,
+      significantMemories: r.significantMemories ?? [],
+    })),
+  } as NPC
+}
+
+function migrateWorld(world: Partial<WorldState>): WorldState {
+  return {
+    ...world,
+    npcs: (world.npcs ?? []).map(migrateNpc),
+    locations: (world.locations ?? []).map((l) => ({
+      ...l,
+      tags: l.tags ?? [l.type ?? 'other'],
+      securityLevel: l.securityLevel ?? 0,
+      containers: l.containers ?? [],
+      fixtures: l.fixtures ?? [],
+      items: l.items ?? [],
+    })),
+  } as WorldState
+}
+
 export function setWorldAndPlayer(world: WorldState, player: Player): void {
-  currentWorld = world
-  currentPlayer = player
-  saveId = world.id
+  currentWorld = migrateWorld(world)
+  currentPlayer = migratePlayer(player)
+  saveId = currentWorld.id
 }
 
 export function getNpc(npcId: string): NPC | undefined {
@@ -185,8 +236,8 @@ export function persistGame(): void {
 export function loadSavedGame(id: string): boolean {
   const saved = loadGame(id)
   if (!saved) return false
-  currentWorld = saved.world
-  currentPlayer = saved.player
+  currentWorld = migrateWorld(saved.world)
+  currentPlayer = migratePlayer(saved.player)
   saveId = id
   return true
 }

@@ -115,14 +115,14 @@ export function ChatPanel() {
       </div>
 
       {/* Player status bar */}
-      {player && (
+      {player?.physical && (
         <div className="px-4 py-2 border-b border-gray-800 bg-gray-900/30 flex items-center gap-4 text-xs">
           <span className="text-red-400">HP: {player.physical.health}/100</span>
           <span className="text-yellow-400">Energy: {player.physical.energy}/100</span>
-          {player.physical.injuries.length > 0 && (
+          {(player.physical.injuries?.length ?? 0) > 0 && (
             <span className="text-orange-400">Injuries: {player.physical.injuries.join(', ')}</span>
           )}
-          {player.inventory.length > 0 && (
+          {(player.inventory?.length ?? 0) > 0 && (
             <span className="text-cyan-400">
               Items: {player.inventory.map((i) => i.name).join(', ')}
             </span>
