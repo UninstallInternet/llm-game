@@ -93,7 +93,9 @@ Respond with ONLY a JSON object (no markdown, no code fences):
   "action_after": null or "what you plan to do after this conversation"
 }
 
-CRITICAL: new_knowledge must ALWAYS have at least one entry summarizing what the visitor said or asked about. This is how you remember the conversation later. Even if they said something mundane, note it: "The visitor asked about the weather" or "They introduced themselves as [name]" or "They were asking about [topic]". Never return null for new_knowledge.`
+CRITICAL: new_knowledge must ALWAYS have at least one entry summarizing what the visitor said or asked about. This is how you remember the conversation later. Even if they said something mundane, note it: "The visitor asked about the weather" or "They introduced themselves as [name]" or "They were asking about [topic]". Never return null for new_knowledge.
+
+VOICE REMINDER: You are ${npc.name}. You ${npc.personality.speechStyle}. Your traits are: ${npc.personality.traits.join(', ')}. Stay consistent with this voice throughout — never become generic or break character.`
 }
 
 export function buildConversationMessages(
@@ -108,7 +110,26 @@ export function buildConversationMessages(
     { role: 'system', content: systemPrompt },
   ]
 
-  const recentHistory = history.slice(-12)
+  // If history is long, summarize older turns as context
+  const MAX_RECENT = 10
+  if (history.length > MAX_RECENT) {
+    const olderTurns = history.slice(0, -MAX_RECENT)
+    const summaryParts: string[] = []
+    for (const t of olderTurns) {
+      const speaker = t.role === 'player' ? 'Visitor' : npc.name
+      summaryParts.push(`${speaker}: ${t.content.slice(0, 60)}`)
+    }
+    messages.push({
+      role: 'user',
+      content: `[Previous conversation summary - ${olderTurns.length} earlier exchanges:\n${summaryParts.slice(-8).join('\n')}\n...The conversation continues:]`,
+    })
+    messages.push({
+      role: 'assistant',
+      content: `*nods, recalling our earlier conversation* (I remember what we discussed.)`,
+    })
+  }
+
+  const recentHistory = history.slice(-MAX_RECENT)
   for (const turn of recentHistory) {
     if (turn.role === 'player') {
       messages.push({ role: 'user', content: turn.content })
