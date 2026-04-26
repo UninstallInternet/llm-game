@@ -13,6 +13,9 @@ export function moveNpcsToSchedule(): NpcMovement[] {
   const movements: NpcMovement[] = []
 
   for (const npc of world.npcs) {
+    // Skip NPCs with active plans — they manage their own movement
+    if (npc.activePlan?.status === 'active') continue
+
     const scheduleEntry = npc.schedule.find((s) => s.timeSlot === currentTime)
     if (!scheduleEntry) continue
 

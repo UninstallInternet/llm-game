@@ -177,8 +177,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
       case 'npc_action': {
         const actingNpc = state.world?.npcs.find((n) => n.id === event.data.npcId)
-        if (actingNpc) {
+        if (actingNpc && actingNpc.currentLocationId === state.player?.currentLocationId) {
           state.addEventLog(`${actingNpc.name}: ${event.data.description}`)
+        }
+        state.addDebugEntry({
+          tick: state.world?.currentTick ?? 0,
+          timestamp: Date.now(),
+          type: 'npc_action',
+          npcName: actingNpc?.name ?? 'Unknown',
+          data: { description: event.data.description },
+        })
+        break
+      }
+      case 'npc_plan': {
+        const planData = event.data as { npcId: string; goal: string; status: string; stepCount: number }
+        const planNpc = state.world?.npcs.find((n) => n.id === planData.npcId)
+        state.addDebugEntry({
+          tick: state.world?.currentTick ?? 0,
+          timestamp: Date.now(),
+          type: 'npc_action',
+          npcName: planNpc?.name ?? 'Unknown',
+          data: { plan: planData.goal, status: planData.status, steps: planData.stepCount },
+        })
+        break
+      }
+      case 'npc_action_result': {
+        const arData = event.data as { npcId: string; action: string; outcome: string; description: string }
+        const arNpc = state.world?.npcs.find((n) => n.id === arData.npcId)
+        if (arNpc && arNpc.currentLocationId === state.player?.currentLocationId) {
+          state.addEventLog(`${arNpc.name} ${arData.description}`)
+        }
+        state.addDebugEntry({
+          tick: state.world?.currentTick ?? 0,
+          timestamp: Date.now(),
+          type: 'npc_action',
+          npcName: arNpc?.name ?? 'Unknown',
+          data: { action: arData.action, outcome: arData.outcome, description: arData.description },
+        })
+        break
+      }
+      case 'item_found': {
+        const ifData = event.data as { npcId: string; itemName: string; locationId: string }
+        const ifNpc = state.world?.npcs.find((n) => n.id === ifData.npcId)
+        if (ifNpc && ifData.locationId === state.player?.currentLocationId) {
+          state.addEventLog(`${ifNpc.name} found something.`)
         }
         break
       }

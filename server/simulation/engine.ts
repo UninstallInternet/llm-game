@@ -9,6 +9,8 @@ import { moveNpcsToSchedule } from './npc-behavior.js'
 import { propagateInfo } from './info-share.js'
 import { checkEventTriggers } from './events.js'
 import { runNpcConversations } from './npc-conversations.js'
+import { processNpcTurn } from './npc-planner.js'
+import { MAX_SIMULATION_LLM_CALLS_PER_TICK } from '../../shared/constants.js'
 
 let actionCount = 0
 let tickInProgress = false
@@ -38,11 +40,13 @@ async function runTick(): Promise<void> {
   tickInProgress = true
 
   try {
+    const world = getWorld()
+
     // 1. Advance time
     const newTime = advanceTime()
     broadcastEvent({ type: 'time_advanced', data: newTime })
 
-    // 2. Move NPCs according to schedules
+    // 2. Move NPCs according to schedules (only those without active plans)
     const movements = moveNpcsToSchedule()
     for (const move of movements) {
       broadcastEvent({ type: 'npc_moved', data: move })
@@ -54,24 +58,38 @@ async function runTick(): Promise<void> {
       broadcastEvent({ type: 'info_shared', data: share })
     }
 
-    // 4. NPC-to-NPC conversations (async, 1-2 LLM calls)
+    // 4. NPC-to-NPC conversations (1-2 LLM calls)
     await runNpcConversations()
 
-    // 5. Check for event triggers
+    // 5. NPC autonomous actions — process each NPC with budget control
+    let llmBudget = MAX_SIMULATION_LLM_CALLS_PER_TICK - 2 // reserve 2 for conversations
+    const updatedWorld = getWorld()
+
+    for (const npc of updatedWorld.npcs) {
+      if (llmBudget <= 0) break
+
+      const result = await processNpcTurn(npc, updatedWorld)
+      llmBudget -= result.llmCalls
+
+      if (result.action !== 'routine' && result.action !== 'thinking') {
+        console.log(`[NPC Turn] ${npc.name}: ${result.action}`)
+      }
+    }
+
+    // 6. Check for event triggers
     const triggered = checkEventTriggers()
     for (const event of triggered) {
       broadcastEvent({ type: 'event_triggered', data: event })
     }
 
-    // 6. Broadcast tick
-    const world = getWorld()
+    // 7. Broadcast tick
     broadcastEvent({
       type: 'simulation_tick',
-      data: { tick: world.currentTick, time: newTime },
+      data: { tick: updatedWorld.currentTick, time: newTime },
     })
 
     // Auto-save every full day
-    if (world.currentTick % 4 === 0) {
+    if (updatedWorld.currentTick % 4 === 0) {
       persistGame()
     }
   } catch (error) {
