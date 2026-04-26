@@ -111,21 +111,28 @@ export function ChatPanel() {
         </div>
       )}
 
-      {/* NPC Conversation Header */}
-      {isConversing && (
-        <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex items-center justify-between shrink-0">
+      {/* Context header — always shows where you are + what you're doing */}
+      <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex items-center justify-between shrink-0">
+        {isConversing ? (
+          <>
+            <div>
+              <span className="font-medium text-amber-400">{currentNpc.name}</span>
+              <span className="text-sm text-gray-500 ml-2">{currentNpc.occupation}</span>
+            </div>
+            <button
+              onClick={() => useGameStore.getState().setCurrentNpc(null)}
+              className="text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded border border-gray-700 transition-colors"
+            >
+              &#x2190; Back to {location?.name ?? 'exploration'}
+            </button>
+          </>
+        ) : (
           <div>
-            <span className="font-medium text-amber-400">{currentNpc.name}</span>
-            <span className="text-sm text-gray-500 ml-2">{currentNpc.occupation}</span>
+            <span className="font-medium text-emerald-400">{location?.name ?? 'Unknown'}</span>
+            <span className="text-sm text-gray-500 ml-2">Exploring</span>
           </div>
-          <button
-            onClick={() => useGameStore.getState().setCurrentNpc(null)}
-            className="text-xs text-gray-500 hover:text-gray-300 bg-gray-800 px-2 py-1 rounded"
-          >
-            End conversation
-          </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Main content area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
