@@ -23,6 +23,12 @@ chatRoutes.post('/', async (req, res) => {
     }
 
     const { npcId, message } = req.body as ChatRequest
+
+    if (!message?.trim()) {
+      res.json({ success: false, error: 'Message cannot be empty' } satisfies ApiResponse<never>)
+      return
+    }
+
     const npc = getNpc(npcId)
 
     if (!npc) {
@@ -32,6 +38,12 @@ chatRoutes.post('/', async (req, res) => {
 
     const world = getWorld()
     const player = getPlayer()
+
+    // NPC must be at the player's location
+    if (npc.currentLocationId !== player.currentLocationId) {
+      res.json({ success: false, error: 'That person is not here' } satisfies ApiResponse<never>)
+      return
+    }
 
     // Mark NPC as known
     if (!player.knownNpcIds.includes(npcId)) {

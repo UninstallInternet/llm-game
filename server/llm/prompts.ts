@@ -85,8 +85,8 @@ export function buildConversationMessages(
     { role: 'system', content: systemPrompt },
   ]
 
-  // Add conversation history (last 6 turns for context window efficiency)
-  const recentHistory = history.slice(-6)
+  // Add conversation history (last 12 turns for good context)
+  const recentHistory = history.slice(-12)
   for (const turn of recentHistory) {
     if (turn.role === 'player') {
       messages.push({ role: 'user', content: turn.content })

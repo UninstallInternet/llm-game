@@ -25,7 +25,7 @@ export async function llmCall(
       { role: 'user', content: userMessage },
     ],
     temperature: tier === 'worldGen' ? 0.9 : 0.8,
-    max_tokens: tier === 'worldGen' ? 4096 : 2048,
+    max_tokens: tier === 'worldGen' ? 16384 : 2048,
     ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
   })
 
