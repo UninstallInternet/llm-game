@@ -1,5 +1,4 @@
 import { Router } from 'express'
-import { v4 as uuid } from 'uuid'
 import type { ApiResponse, GameStateResponse, GenerateWorldRequest, Player } from '../../shared/types.js'
 import { generateWorld } from '../llm/world-generator.js'
 import {
@@ -16,6 +15,21 @@ import { broadcastEvent } from './events.js'
 
 export const gameRoutes = Router()
 
+// Auto-load the most recent save on first request
+let autoLoaded = false
+function autoLoadLastSave(): void {
+  if (autoLoaded) return
+  autoLoaded = true
+  const saves = listSaves()
+  if (saves.length > 0) {
+    const loaded = loadSavedGame(saves[0].id)
+    if (loaded) {
+      console.log(`Auto-loaded save: ${saves[0].name}`)
+      startSimulation()
+    }
+  }
+}
+
 gameRoutes.post('/new', async (req, res) => {
   try {
     const { settingDescription, npcCount, locationCount } = req.body as GenerateWorldRequest
@@ -29,8 +43,8 @@ gameRoutes.post('/new', async (req, res) => {
 
     const world = await generateWorld(
       settingDescription,
-      npcCount || 25,
-      locationCount || 12,
+      npcCount || 10,
+      locationCount || 6,
       (phase, message) => {
         broadcastEvent({ type: 'world_generated', data: { phase, message } })
       }
@@ -48,6 +62,7 @@ gameRoutes.post('/new', async (req, res) => {
 
     setWorldAndPlayer(world, player)
     persistGame()
+    autoLoaded = true
     startSimulation()
 
     const response: ApiResponse<GameStateResponse> = {
@@ -62,6 +77,8 @@ gameRoutes.post('/new', async (req, res) => {
 })
 
 gameRoutes.get('/state', (_req, res) => {
+  autoLoadLastSave()
+
   if (!isGameActive()) {
     res.json({ success: false, error: 'No active game' } satisfies ApiResponse<never>)
     return
@@ -97,6 +114,7 @@ gameRoutes.post('/load', (req, res) => {
     return
   }
 
+  autoLoaded = true
   startSimulation()
 
   const response: ApiResponse<GameStateResponse> = {

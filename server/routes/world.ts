@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import type { ApiResponse, NPC } from '../../shared/types.js'
+import { onPlayerAction } from '../simulation/engine.js'
 import {
   getWorld,
   getPlayer,
@@ -75,7 +76,8 @@ worldRoutes.post('/move', (req, res) => {
 
   const npcsHere = getNpcsAtLocation(locationId).map(stripNpcSecrets)
 
-  // Auto-persist on movement
+  // Advance simulation and persist
+  onPlayerAction()
   persistGame()
 
   res.json({

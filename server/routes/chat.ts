@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import type { ApiResponse, ChatRequest, ChatResponse } from '../../shared/types.js'
 import { conversate } from '../llm/npc-agent.js'
+import { onPlayerAction } from '../simulation/engine.js'
 import {
   getWorld,
   getPlayer,
@@ -110,7 +111,8 @@ chatRoutes.post('/', async (req, res) => {
       })
     }
 
-    // Auto-persist after conversation
+    // Advance simulation and persist
+    onPlayerAction()
     persistGame()
 
     const response: ApiResponse<ChatResponse> = {
