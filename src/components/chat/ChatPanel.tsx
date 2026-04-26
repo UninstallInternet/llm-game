@@ -5,9 +5,8 @@ import type { ApiResponse, PlayerActionResponse } from '../../../shared/types'
 
 export function ChatPanel() {
   const [input, setInput] = useState('')
-  const [actionMode, setActionMode] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
-  const [narrativeLog, setNarrativeLog] = useState<Array<{ type: 'action' | 'result'; text: string }>>([])
+  const [narrativeLog, setNarrativeLog] = useState<Array<{ type: 'action' | 'result' | 'system'; text: string }>>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const currentNpc = useGameStore((s) => s.currentNpc)
   const player = useGameStore((s) => s.player)
@@ -16,129 +15,125 @@ export function ChatPanel() {
   const { sendMessage } = useChat()
 
   const conversation = currentNpc && player ? player.conversationHistory[currentNpc.id] ?? [] : []
+  const location = world?.locations.find((l) => l.id === player?.currentLocationId)
+  const isConversing = !!currentNpc
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversation.length, chatLoading, narrativeLog.length])
 
+  async function handleAction(actionText: string) {
+    if (!actionText.trim() || actionLoading) return
+    setActionLoading(true)
+    setNarrativeLog((prev) => [...prev, { type: 'action', text: actionText }])
+
+    try {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: actionText }),
+      })
+      const json = (await res.json()) as ApiResponse<PlayerActionResponse>
+      if (json.success && json.data) {
+        const d = json.data
+        const color = d.outcome === 'strong_success' ? 'success' : d.outcome === 'failure' ? 'fail' : 'partial'
+        setNarrativeLog((prev) => [...prev, {
+          type: 'result',
+          text: `[${color}] ${d.narrative}${d.itemFound ? ` [+${d.itemFound.name}]` : ''}${d.injury ? ` [Injury: ${d.injury}]` : ''}`,
+        }])
+        // Refresh state
+        const stateRes = await fetch('/api/game/state')
+        const stateJson = await stateRes.json()
+        if (stateJson.success && stateJson.data) {
+          useGameStore.getState().setGameState(stateJson.data.world, stateJson.data.player)
+        }
+      } else {
+        setNarrativeLog((prev) => [...prev, { type: 'result', text: `Error: ${json.error}` }])
+      }
+    } catch {
+      setNarrativeLog((prev) => [...prev, { type: 'result', text: 'Action failed.' }])
+    }
+    setActionLoading(false)
+  }
+
   async function handleSend() {
-    if (!input.trim() || chatLoading || actionLoading) return
+    if (!input.trim()) return
     const msg = input.trim()
     setInput('')
 
-    if (actionMode || !currentNpc) {
-      // Player action mode
-      setActionLoading(true)
-      setNarrativeLog((prev) => [...prev, { type: 'action', text: msg }])
-
-      try {
-        const res = await fetch('/api/action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: msg }),
-        })
-        const json = (await res.json()) as ApiResponse<PlayerActionResponse>
-        if (json.success && json.data) {
-          const d = json.data
-          setNarrativeLog((prev) => [...prev, {
-            type: 'result',
-            text: `[${d.outcome}] ${d.narrative}${d.itemFound ? ` (Found: ${d.itemFound.name})` : ''}${d.injury ? ` (Injured: ${d.injury})` : ''}`,
-          }])
-          // Refresh game state to get updated inventory/health
-          const stateRes = await fetch('/api/game/state')
-          const stateJson = await stateRes.json()
-          if (stateJson.success && stateJson.data) {
-            useGameStore.getState().setGameState(stateJson.data.world, stateJson.data.player)
-          }
-        } else {
-          setNarrativeLog((prev) => [...prev, { type: 'result', text: `Error: ${json.error}` }])
-        }
-      } catch (err) {
-        setNarrativeLog((prev) => [...prev, { type: 'result', text: 'Action failed.' }])
-      }
-      setActionLoading(false)
-      return
+    if (isConversing) {
+      await sendMessage(currentNpc.id, msg)
+    } else {
+      await handleAction(msg)
     }
-
-    // Chat mode
-    await sendMessage(currentNpc.id, msg)
   }
 
-  const location = world?.locations.find((l) => l.id === player?.currentLocationId)
+  // Quick action buttons
+  const unsearchedContainers = location?.containers.filter((c) => !c.searched) ?? []
+  const locationItems = location?.items ?? []
 
   return (
     <div className="flex-1 flex flex-col">
-      {/* Header bar: NPC or exploration mode */}
-      <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex items-center justify-between">
-        {currentNpc ? (
-          <>
-            <div>
-              <span className="font-medium text-amber-400">{currentNpc.name}</span>
-              <span className="text-sm text-gray-500 ml-2">
-                {currentNpc.occupation}, age {currentNpc.age}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">
-                Mood: {currentNpc.mood.current}
-              </span>
-              <button
-                onClick={() => useGameStore.getState().setCurrentNpc(null)}
-                className="text-gray-500 hover:text-gray-300 px-2"
-              >
-                &#x2715;
-              </button>
-            </div>
-          </>
-        ) : (
-          <div>
-            <span className="font-medium text-emerald-400">{location?.name ?? 'Unknown'}</span>
-            <span className="text-sm text-gray-500 ml-2">Exploring</span>
-          </div>
-        )}
-
-        {/* Mode toggle */}
-        <div className="flex gap-1">
-          <button
-            onClick={() => setActionMode(false)}
-            className={`px-2 py-1 text-xs rounded ${!actionMode ? 'bg-blue-900/40 text-blue-300' : 'text-gray-500 hover:text-gray-300'}`}
-          >
-            Talk
-          </button>
-          <button
-            onClick={() => setActionMode(true)}
-            className={`px-2 py-1 text-xs rounded ${actionMode ? 'bg-emerald-900/40 text-emerald-300' : 'text-gray-500 hover:text-gray-300'}`}
-          >
-            Act
-          </button>
-        </div>
-      </div>
-
-      {/* Player status bar */}
+      {/* Player Status Bar — always visible */}
       {player?.physical && (
-        <div className="px-4 py-2 border-b border-gray-800 bg-gray-900/30 flex items-center gap-4 text-xs">
-          <span className="text-red-400">HP: {player.physical.health}/100</span>
-          <span className="text-yellow-400">Energy: {player.physical.energy}/100</span>
-          {(player.physical.injuries?.length ?? 0) > 0 && (
-            <span className="text-orange-400">Injuries: {player.physical.injuries.join(', ')}</span>
-          )}
+        <div className="px-4 py-2 border-b border-gray-800 bg-gray-950 flex items-center justify-between text-xs shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500">HP</span>
+              <div className="w-20 h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${player.physical.health > 60 ? 'bg-green-500' : player.physical.health > 30 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                  style={{ width: `${player.physical.health}%` }}
+                />
+              </div>
+              <span className="text-gray-400">{player.physical.health}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500">EN</span>
+              <div className="w-16 h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${player.physical.energy}%` }} />
+              </div>
+              <span className="text-gray-400">{player.physical.energy}</span>
+            </div>
+            {(player.physical.injuries?.length ?? 0) > 0 && (
+              <span className="text-orange-400">&#x1FA79; {player.physical.injuries.join(', ')}</span>
+            )}
+          </div>
           {(player.inventory?.length ?? 0) > 0 && (
-            <span className="text-cyan-400">
-              Items: {player.inventory.map((i) => i.name).join(', ')}
-            </span>
+            <div className="flex items-center gap-1 text-cyan-400">
+              <span className="text-gray-500">Bag:</span>
+              {player.inventory.map((item, i) => (
+                <span key={i} className="bg-cyan-900/30 px-1.5 py-0.5 rounded text-cyan-300">{item.name}</span>
+              ))}
+            </div>
           )}
         </div>
       )}
 
-      {/* Messages / Narrative */}
+      {/* NPC Conversation Header */}
+      {isConversing && (
+        <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex items-center justify-between shrink-0">
+          <div>
+            <span className="font-medium text-amber-400">{currentNpc.name}</span>
+            <span className="text-sm text-gray-500 ml-2">{currentNpc.occupation}</span>
+          </div>
+          <button
+            onClick={() => useGameStore.getState().setCurrentNpc(null)}
+            className="text-xs text-gray-500 hover:text-gray-300 bg-gray-800 px-2 py-1 rounded"
+          >
+            End conversation
+          </button>
+        </div>
+      )}
+
+      {/* Main content area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {/* Chat mode with NPC */}
-        {currentNpc && !actionMode && (
+        {/* ── Conversation mode ── */}
+        {isConversing && (
           <>
             {conversation.length === 0 && (
-              <div className="text-center text-gray-600 text-sm py-8">
+              <div className="text-center text-gray-600 text-sm py-4">
                 <p className="text-gray-500 mb-1">{currentNpc.appearance}</p>
-                <p>Start a conversation with {currentNpc.name}.</p>
               </div>
             )}
             {conversation.map((turn, i) => (
@@ -155,58 +150,86 @@ export function ChatPanel() {
             ))}
             {chatLoading && (
               <div className="flex justify-start">
-                <div className="bg-gray-800 px-3 py-2 rounded-lg text-sm text-gray-400">
-                  <span className="animate-pulse">thinking...</span>
-                </div>
+                <div className="bg-gray-800 px-3 py-2 rounded-lg text-sm text-gray-400 animate-pulse">thinking...</div>
               </div>
             )}
           </>
         )}
 
-        {/* Action / exploration mode */}
-        {(actionMode || !currentNpc) && (
+        {/* ── Exploration / Action mode ── */}
+        {!isConversing && (
           <>
-            {narrativeLog.length === 0 && (
-              <div className="text-center text-gray-600 text-sm py-8">
-                <p className="text-2xl mb-3">&#x1F50D;</p>
-                <p>You're at <span className="text-emerald-400">{location?.name}</span>.</p>
-                <p className="text-gray-700 mt-1">{location?.description}</p>
-                {location && location.containers.filter((c) => !c.searched).length > 0 && (
-                  <p className="text-gray-500 mt-3">
-                    You see: {location.containers.filter((c) => !c.searched).map((c) => c.name).join(', ')}
-                  </p>
-                )}
-                {location && location.fixtures.length > 0 && (
-                  <p className="text-gray-600 mt-1">
-                    Fixtures: {location.fixtures.join(', ')}
-                  </p>
-                )}
-                <p className="text-gray-600 mt-4 text-xs">
-                  Try: "search the room", "examine the control panel", "hide behind the crates", or anything you can think of.
-                </p>
-              </div>
-            )}
+            {/* Location info */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 mb-2">
+              <h2 className="text-emerald-400 font-medium mb-1">{location?.name}</h2>
+              <p className="text-sm text-gray-400">{location?.description}</p>
+
+              {location && location.fixtures.length > 0 && (
+                <div className="mt-2 text-xs text-gray-500">
+                  <span className="text-gray-400">You see: </span>
+                  {location.fixtures.join(', ')}
+                </div>
+              )}
+
+              {locationItems.length > 0 && (
+                <div className="mt-2 flex gap-2 flex-wrap">
+                  {locationItems.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleAction(`pick up ${item.name}`)}
+                      disabled={actionLoading}
+                      className="text-xs bg-cyan-900/30 text-cyan-300 px-2 py-1 rounded hover:bg-cyan-800/40 transition-colors"
+                    >
+                      Pick up: {item.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quick action buttons */}
+            <div className="flex gap-2 flex-wrap mb-2">
+              {unsearchedContainers.length > 0 && (
+                unsearchedContainers.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => handleAction(`search the ${c.name}`)}
+                    disabled={actionLoading}
+                    className="text-xs bg-emerald-900/30 text-emerald-300 px-3 py-1.5 rounded border border-emerald-800/30 hover:bg-emerald-800/40 transition-colors"
+                  >
+                    Search: {c.name}
+                  </button>
+                ))
+              )}
+              <button
+                onClick={() => handleAction('look around carefully')}
+                disabled={actionLoading}
+                className="text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded border border-gray-700 hover:bg-gray-700 transition-colors"
+              >
+                Look around
+              </button>
+            </div>
+
+            {/* Narrative log */}
             {narrativeLog.map((entry, i) => (
               <div key={i} className={`flex ${entry.type === 'action' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-lg px-3 py-2 rounded-lg text-sm ${
                   entry.type === 'action'
                     ? 'bg-emerald-900/50 text-emerald-100'
-                    : entry.text.includes('[strong_success]')
+                    : entry.text.includes('[success]')
                       ? 'bg-green-900/30 text-green-200 border border-green-800/30'
-                      : entry.text.includes('[failure]')
+                      : entry.text.includes('[fail]')
                         ? 'bg-red-900/30 text-red-200 border border-red-800/30'
                         : 'bg-gray-800 text-gray-200'
                 }`}>
-                  {entry.type === 'action' && <span className="text-xs text-emerald-400 block mb-1">You attempt:</span>}
+                  {entry.type === 'action' && <span className="text-xs text-emerald-400 block mb-1">You:</span>}
                   {entry.text}
                 </div>
               </div>
             ))}
             {actionLoading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-800 px-3 py-2 rounded-lg text-sm text-gray-400">
-                  <span className="animate-pulse">resolving action...</span>
-                </div>
+              <div className="bg-gray-800 px-3 py-2 rounded-lg text-sm text-gray-400 inline-block animate-pulse">
+                resolving...
               </div>
             )}
           </>
@@ -215,22 +238,19 @@ export function ChatPanel() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="p-3 border-t border-gray-800">
+      {/* Input bar */}
+      <div className="p-3 border-t border-gray-800 shrink-0">
         <form onSubmit={(e) => { e.preventDefault(); handleSend() }} className="flex gap-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              actionMode || !currentNpc
-                ? 'What do you do? (search, pick up, use, examine, hide...)'
-                : `Say something to ${currentNpc.name}...`
+            placeholder={isConversing
+              ? `Say something to ${currentNpc.name}...`
+              : 'What do you do? (type anything: search, examine, hide, use item...)'
             }
             className={`flex-1 bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none ${
-              actionMode || !currentNpc
-                ? 'border-emerald-800 focus:border-emerald-500'
-                : 'border-gray-700 focus:border-amber-500'
+              isConversing ? 'border-gray-700 focus:border-amber-500' : 'border-emerald-900 focus:border-emerald-500'
             }`}
             disabled={chatLoading || actionLoading}
             autoFocus
@@ -239,12 +259,10 @@ export function ChatPanel() {
             type="submit"
             disabled={!input.trim() || chatLoading || actionLoading}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:bg-gray-700 disabled:text-gray-500 ${
-              actionMode || !currentNpc
-                ? 'bg-emerald-600 hover:bg-emerald-500'
-                : 'bg-amber-600 hover:bg-amber-500'
+              isConversing ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'
             }`}
           >
-            {actionMode || !currentNpc ? 'Do' : 'Send'}
+            {isConversing ? 'Say' : 'Do'}
           </button>
         </form>
       </div>
