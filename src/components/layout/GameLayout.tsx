@@ -1,6 +1,7 @@
 import { useGameStore } from '../../stores/gameStore'
 import { LocationPanel } from '../world/LocationPanel'
 import { LocationNav } from '../world/LocationNav'
+import { WorldMap } from '../world/WorldMap'
 import { ChatPanel } from '../chat/ChatPanel'
 import { EventLog } from '../sidebar/EventLog'
 import { NPCList } from '../sidebar/NPCList'
@@ -49,6 +50,7 @@ export function GameLayout() {
         {/* Left: Location + Navigation */}
         <div className="w-72 bg-gray-900 border-r border-gray-800 flex flex-col overflow-hidden shrink-0">
           <LocationPanel />
+          <WorldMap />
           <LocationNav />
         </div>
 
