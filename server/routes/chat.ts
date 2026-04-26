@@ -124,6 +124,15 @@ chatRoutes.post('/', async (req, res) => {
           ? `${npc.name} seems to have something on their mind...`
           : null,
         stateChanges: { npcMoodChanged, newKnowledgeLearned, actionTriggered },
+        debug: {
+          internalThought: npcResponse.internal_thought,
+          moodChange: npcResponse.mood_change
+            ? { current: npcResponse.mood_change.current, delta: npcResponse.mood_change.toward_player_delta, reason: npcResponse.mood_change.reason }
+            : null,
+          knowledgeGained: npcResponse.new_knowledge,
+          actionAfter: npcResponse.action_after,
+          wantsToEnd: npcResponse.wants_to_end_conversation,
+        },
       },
     }
     res.json(response)

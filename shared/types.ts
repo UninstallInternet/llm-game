@@ -194,6 +194,14 @@ export interface ChatRequest {
   message: string
 }
 
+export interface DebugReasoning {
+  internalThought: string
+  moodChange: { current: string; delta: number; reason: string } | null
+  knowledgeGained: Array<{ content: string; source: string }> | null
+  actionAfter: string | null
+  wantsToEnd: boolean
+}
+
 export interface ChatResponse {
   dialogue: string
   narration: string | null
@@ -202,6 +210,7 @@ export interface ChatResponse {
     newKnowledgeLearned: boolean
     actionTriggered: boolean
   }
+  debug: DebugReasoning | null
 }
 
 export interface GenerateWorldRequest {
@@ -223,6 +232,11 @@ export type GameEvent =
   | { type: 'event_triggered'; data: WorldEvent }
   | { type: 'info_shared'; data: { fromNpcId: string; toNpcId: string; summary: string } }
   | { type: 'npc_action'; data: { npcId: string; description: string } }
-  | { type: 'npc_conversation'; data: { npc1Id: string; npc2Id: string; locationId: string; summary: string } }
+  | { type: 'npc_conversation'; data: {
+      npc1Id: string; npc2Id: string; locationId: string; summary: string
+      npc1Thought: string; npc2Thought: string
+      npc1MoodShift: string | null; npc2MoodShift: string | null
+      relationshipDeltas: { npc1: number; npc2: number }
+    } }
   | { type: 'world_generated'; data: { phase: string; message: string } }
   | { type: 'simulation_tick'; data: { tick: number; time: GameTime } }

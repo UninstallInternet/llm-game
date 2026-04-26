@@ -34,6 +34,22 @@ export function useChat() {
           tick: world?.currentTick ?? 0,
         })
 
+        // Store debug reasoning
+        if (json.data.debug) {
+          const npc = world?.npcs.find((n) => n.id === npcId)
+          useGameStore.getState().setLastChatDebug({
+            ...json.data.debug,
+            npcName: npc?.name ?? 'Unknown',
+          })
+          useGameStore.getState().addDebugEntry({
+            tick: world?.currentTick ?? 0,
+            timestamp: Date.now(),
+            type: 'player_chat',
+            npcName: npc?.name ?? 'Unknown',
+            data: json.data.debug as unknown as Record<string, unknown>,
+          })
+        }
+
         return json.data
       } catch (error) {
         console.error('Chat error:', error)

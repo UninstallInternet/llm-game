@@ -277,6 +277,14 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
         npc2Id: result.npc2Id,
         locationId: result.locationId,
         summary: result.summary,
+        npc1Thought: result.npc1Takeaway.internalReaction,
+        npc2Thought: result.npc2Takeaway.internalReaction,
+        npc1MoodShift: result.npc1Takeaway.moodShift,
+        npc2MoodShift: result.npc2Takeaway.moodShift,
+        relationshipDeltas: {
+          npc1: result.npc1Takeaway.relationshipDelta,
+          npc2: result.npc2Takeaway.relationshipDelta,
+        },
       },
     })
   }

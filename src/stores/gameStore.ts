@@ -5,10 +5,18 @@ import type {
   NPC,
   GameEvent,
   ConversationTurn,
+  DebugReasoning,
 } from '../../shared/types.js'
 
+export interface DebugEntry {
+  tick: number
+  timestamp: number
+  type: 'player_chat' | 'npc_conversation' | 'npc_action'
+  npcName: string
+  data: Record<string, unknown>
+}
+
 interface GameStore {
-  // State
   world: WorldState | null
   player: Player | null
   isLoading: boolean
@@ -17,8 +25,10 @@ interface GameStore {
   currentNpc: NPC | null
   chatLoading: boolean
   eventLog: Array<{ timestamp: number; message: string }>
+  debugLog: DebugEntry[]
+  showDebug: boolean
+  lastChatDebug: (DebugReasoning & { npcName: string }) | null
 
-  // Actions
   setGameState: (world: WorldState, player: Player) => void
   setLoading: (loading: boolean) => void
   setGenerating: (generating: boolean) => void
@@ -31,6 +41,9 @@ interface GameStore {
   addConversationTurn: (npcId: string, turn: ConversationTurn) => void
   updateNpcInWorld: (npcId: string, updates: Partial<NPC>) => void
   handleGameEvent: (event: GameEvent) => void
+  toggleDebug: () => void
+  addDebugEntry: (entry: DebugEntry) => void
+  setLastChatDebug: (debug: (DebugReasoning & { npcName: string }) | null) => void
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -42,27 +55,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
   currentNpc: null,
   chatLoading: false,
   eventLog: [],
+  debugLog: [],
+  showDebug: false,
+  lastChatDebug: null,
 
   setGameState: (world, player) => set({ world, player, isGenerating: false }),
-
   setLoading: (isLoading) => set({ isLoading }),
-
   setGenerating: (isGenerating) => set({ isGenerating }),
-
   addGenerationMessage: (message) =>
-    set((state) => ({
-      generationMessages: [...state.generationMessages, message],
-    })),
-
+    set((state) => ({ generationMessages: [...state.generationMessages, message] })),
   clearGenerationMessages: () => set({ generationMessages: [] }),
-
   setCurrentNpc: (currentNpc) => set({ currentNpc }),
-
   setChatLoading: (chatLoading) => set({ chatLoading }),
+  toggleDebug: () => set((state) => ({ showDebug: !state.showDebug })),
+  setLastChatDebug: (lastChatDebug) => set({ lastChatDebug }),
 
   addEventLog: (message) =>
     set((state) => ({
       eventLog: [...state.eventLog.slice(-50), { timestamp: Date.now(), message }],
+    })),
+
+  addDebugEntry: (entry) =>
+    set((state) => ({
+      debugLog: [...state.debugLog.slice(-30), entry],
     })),
 
   movePlayerTo: (locationId, npcsHere) =>
@@ -118,8 +133,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const npc = state.world?.npcs.find((n) => n.id === event.data.npcId)
         if (npc) {
           state.updateNpcInWorld(event.data.npcId, { currentLocationId: event.data.toLocationId })
-          const toLoc = state.world?.locations.find((l) => l.id === event.data.toLocationId)
-          if (toLoc && event.data.toLocationId === state.player?.currentLocationId) {
+          if (event.data.toLocationId === state.player?.currentLocationId) {
             state.addEventLog(`${npc.name} arrives.`)
           }
           if (event.data.fromLocationId === state.player?.currentLocationId) {
@@ -134,22 +148,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
       case 'info_shared': {
         const from = state.world?.npcs.find((n) => n.id === event.data.fromNpcId)
         const to = state.world?.npcs.find((n) => n.id === event.data.toNpcId)
-        if (
-          from &&
-          to &&
-          (from.currentLocationId === state.player?.currentLocationId ||
-            to.currentLocationId === state.player?.currentLocationId)
-        ) {
+        if (from && to && (from.currentLocationId === state.player?.currentLocationId || to.currentLocationId === state.player?.currentLocationId)) {
           state.addEventLog(`You overhear ${from.name} telling ${to.name} something.`)
         }
         break
       }
       case 'npc_conversation': {
-        const convData = event.data as { npc1Id: string; npc2Id: string; locationId: string; summary: string }
-        const cn1 = state.world?.npcs.find((n) => n.id === convData.npc1Id)
-        const cn2 = state.world?.npcs.find((n) => n.id === convData.npc2Id)
-        if (cn1 && cn2 && convData.locationId === state.player?.currentLocationId) {
-          state.addEventLog(`${cn1.name} and ${cn2.name} are talking. ${convData.summary}`)
+        const d = event.data
+        const cn1 = state.world?.npcs.find((n) => n.id === d.npc1Id)
+        const cn2 = state.world?.npcs.find((n) => n.id === d.npc2Id)
+        if (cn1 && cn2) {
+          if (d.locationId === state.player?.currentLocationId) {
+            state.addEventLog(`${cn1.name} and ${cn2.name} are talking. ${d.summary}`)
+          }
+          state.addDebugEntry({
+            tick: state.world?.currentTick ?? 0,
+            timestamp: Date.now(),
+            type: 'npc_conversation',
+            npcName: `${cn1.name} <-> ${cn2.name}`,
+            data: {
+              summary: d.summary,
+              npc1: { name: cn1.name, thought: d.npc1Thought, moodShift: d.npc1MoodShift, relDelta: d.relationshipDeltas.npc1 },
+              npc2: { name: cn2.name, thought: d.npc2Thought, moodShift: d.npc2MoodShift, relDelta: d.relationshipDeltas.npc2 },
+            },
+          })
         }
         break
       }
