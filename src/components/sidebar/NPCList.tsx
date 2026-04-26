@@ -24,6 +24,7 @@ export function NPCList() {
         {npcsHere.map((npc) => {
           const isSelected = currentNpc?.id === npc.id
           const isKnown = player.knownNpcIds.includes(npc.id)
+          const disposition = npc.mood.toward_player
 
           return (
             <button
@@ -39,16 +40,32 @@ export function NPCList() {
                 <span className={`text-sm ${isSelected ? 'text-amber-400' : 'text-gray-200'}`}>
                   {isKnown ? npc.name : 'Unknown Person'}
                 </span>
-                <span className="text-xs text-gray-600">{moodEmoji(npc.mood.current)}</span>
+                <span className="text-xs">{dispositionIndicator(disposition)}</span>
               </div>
-              <div className="text-xs text-gray-500">
-                {npc.occupation}
-                {isKnown && npc.mood.toward_player !== 0 && (
-                  <span className={npc.mood.toward_player > 0 ? ' text-green-600' : ' text-red-600'}>
-                    {' \u00B7 '}{npc.mood.toward_player > 0 ? '+' : ''}{npc.mood.toward_player}
-                  </span>
+              <div className="text-xs text-gray-500 flex items-center gap-1">
+                <span>{npc.occupation}</span>
+                <span className="text-gray-700">&middot;</span>
+                <span className="italic">{npc.mood.current}</span>
+                {npc.physical?.status !== 'alive' && (
+                  <span className="text-red-500 ml-1">[{npc.physical.status}]</span>
                 )}
               </div>
+              {isKnown && disposition !== 0 && (
+                <div className="mt-1 flex items-center gap-1">
+                  <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${disposition > 0 ? 'bg-green-500' : 'bg-red-500'}`}
+                      style={{
+                        width: `${Math.abs(disposition) / 2}%`,
+                        marginLeft: disposition < 0 ? `${50 + disposition / 2}%` : '50%',
+                      }}
+                    />
+                  </div>
+                  <span className={`text-xs ${disposition > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {disposition > 0 ? '+' : ''}{disposition}
+                  </span>
+                </div>
+              )}
             </button>
           )
         })}
@@ -57,16 +74,10 @@ export function NPCList() {
   )
 }
 
-function moodEmoji(mood: string): string {
-  const moods: Record<string, string> = {
-    happy: '\uD83D\uDE0A',
-    angry: '\uD83D\uDE20',
-    sad: '\uD83D\uDE1E',
-    fearful: '\uD83D\uDE28',
-    suspicious: '\uD83E\uDD28',
-    neutral: '\uD83D\uDE10',
-    excited: '\uD83D\uDE04',
-    worried: '\uD83D\uDE1F',
-  }
-  return moods[mood.toLowerCase()] ?? '\uD83D\uDE10'
+function dispositionIndicator(value: number): string {
+  if (value >= 60) return '\u2764\uFE0F'   // heart - trusting
+  if (value >= 20) return '\uD83D\uDE0A'   // smile - friendly
+  if (value > -20) return '\uD83D\uDE10'    // neutral
+  if (value > -60) return '\uD83D\uDE12'    // unamused - unfriendly
+  return '\uD83D\uDE21'                     // angry - hostile
 }

@@ -164,6 +164,30 @@ actionRoutes.post('/', async (req, res) => {
       return
     }
 
+    // ── Use item: check inventory first ──
+    if (actionLower.includes('use ') || actionLower.includes('apply ') || actionLower.includes('activate ')) {
+      const itemRef = action.replace(/^(use|apply|activate)\s+/i, '').replace(/\s+(on|with|at|to)\s+.*/i, '').trim()
+      const hasItem = player.inventory.some((i) =>
+        i.name.toLowerCase().includes(itemRef.toLowerCase()) ||
+        itemRef.toLowerCase().includes(i.name.toLowerCase())
+      )
+      if (!hasItem && itemRef.length > 2) {
+        onPlayerAction()
+        res.json({
+          success: true,
+          data: {
+            outcome: 'failure',
+            narrative: `You don't have "${itemRef}" in your inventory.`,
+            itemFound: null,
+            healthDelta: 0,
+            energyDelta: 0,
+            injury: null,
+          },
+        } satisfies ApiResponse<PlayerActionResponse>)
+        return
+      }
+    }
+
     // ── Any other action: Game Master adjudicates ──
     const npcsHere = world.npcs
       .filter((n) => n.currentLocationId === player.currentLocationId)

@@ -75,38 +75,39 @@ export function ChatPanel() {
   return (
     <div className="flex-1 flex flex-col">
       {/* Player Status Bar — always visible */}
-      {player?.physical && (
-        <div className="px-4 py-2 border-b border-gray-800 bg-gray-950 flex items-center justify-between text-xs shrink-0">
+      {player && (
+        <div className="px-4 py-2 border-b border-gray-800 bg-gray-950 text-xs shrink-0 space-y-1.5">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1">
               <span className="text-gray-500">HP</span>
               <div className="w-20 h-2 bg-gray-800 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full ${player.physical.health > 60 ? 'bg-green-500' : player.physical.health > 30 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                  style={{ width: `${player.physical.health}%` }}
+                  className={`h-full rounded-full ${(player.physical?.health ?? 100) > 60 ? 'bg-green-500' : (player.physical?.health ?? 100) > 30 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                  style={{ width: `${player.physical?.health ?? 100}%` }}
                 />
               </div>
-              <span className="text-gray-400">{player.physical.health}</span>
+              <span className="text-gray-400">{player.physical?.health ?? 100}</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="text-gray-500">EN</span>
               <div className="w-16 h-2 bg-gray-800 rounded-full overflow-hidden">
-                <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${player.physical.energy}%` }} />
+                <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${player.physical?.energy ?? 100}%` }} />
               </div>
-              <span className="text-gray-400">{player.physical.energy}</span>
+              <span className="text-gray-400">{player.physical?.energy ?? 100}</span>
             </div>
-            {(player.physical.injuries?.length ?? 0) > 0 && (
-              <span className="text-orange-400">&#x1FA79; {player.physical.injuries.join(', ')}</span>
+            {(player.physical?.injuries?.length ?? 0) > 0 && (
+              <span className="text-orange-400">Hurt: {player.physical!.injuries.join(', ')}</span>
             )}
           </div>
-          {(player.inventory?.length ?? 0) > 0 && (
-            <div className="flex items-center gap-1 text-cyan-400">
-              <span className="text-gray-500">Bag:</span>
-              {player.inventory.map((item, i) => (
-                <span key={i} className="bg-cyan-900/30 px-1.5 py-0.5 rounded text-cyan-300">{item.name}</span>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-500">Inventory:</span>
+            {(player.inventory?.length ?? 0) === 0
+              ? <span className="text-gray-600 italic">empty</span>
+              : player.inventory!.map((item, i) => (
+                  <span key={i} className="bg-cyan-900/30 px-1.5 py-0.5 rounded text-cyan-300 border border-cyan-800/30">{item.name}</span>
+                ))
+            }
+          </div>
         </div>
       )}
 
