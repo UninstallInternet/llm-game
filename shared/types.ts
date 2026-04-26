@@ -226,6 +226,9 @@ export interface Player {
   knownLocationIds: string[]
   notes: string[]
   conversationHistory: Record<string, ConversationTurn[]>
+  inventory: Item[]
+  physical: PhysicalState
+  actionLog: Array<{ tick: number; action: string; result: string }>
 }
 
 export interface ConversationTurn {
@@ -269,6 +272,19 @@ export interface ApiResponse<T> {
 export interface ChatRequest {
   npcId: string
   message: string
+}
+
+export interface PlayerActionRequest {
+  action: string // free-form: "search the tool chest", "pick up the wrench", "hide behind crates"
+}
+
+export interface PlayerActionResponse {
+  outcome: 'strong_success' | 'partial_success' | 'failure'
+  narrative: string
+  itemFound: Item | null
+  healthDelta: number
+  energyDelta: number
+  injury: string | null
 }
 
 export interface DebugReasoning {

@@ -58,6 +58,9 @@ gameRoutes.post('/new', async (req, res) => {
       knownLocationIds: [startLocation.id],
       notes: [],
       conversationHistory: {},
+      inventory: [],
+      physical: { health: 100, energy: 100, injuries: [], status: 'alive' },
+      actionLog: [],
     }
 
     setWorldAndPlayer(world, player)

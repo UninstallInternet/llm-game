@@ -4,6 +4,7 @@ import cors from 'cors'
 import { gameRoutes } from './routes/game.js'
 import { chatRoutes } from './routes/chat.js'
 import { worldRoutes } from './routes/world.js'
+import { actionRoutes } from './routes/action.js'
 import { eventsRouter, broadcastEvent } from './routes/events.js'
 import { startSimulation, stopSimulation } from './simulation/engine.js'
 
@@ -16,6 +17,7 @@ app.use(express.json())
 app.use('/api/game', gameRoutes)
 app.use('/api/chat', chatRoutes)
 app.use('/api/world', worldRoutes)
+app.use('/api/action', actionRoutes)
 app.use('/api/events', eventsRouter)
 
 app.get('/api/health', (_req, res) => {
