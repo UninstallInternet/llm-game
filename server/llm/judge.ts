@@ -1,34 +1,68 @@
 import { llmCall } from './client.js'
-import type { JudgeResult, NPC, Location, Item } from '../../shared/types.js'
+import type { JudgeResult, NPC, Location, Item, PhysicalState } from '../../shared/types.js'
 
-interface JudgeInput {
-  actor: { name: string; occupation: string; tags: string[] }
+export interface JudgeInput {
+  actor: { name: string; occupation: string; tags: string[]; health?: number; injuries?: string[] }
   action: string
-  target: { name: string; tags: string[] }
+  target: { name: string; tags: string[]; health?: number }
   environment: { name: string; tags: string[] }
   context: string
 }
 
-function buildJudgePrompt(input: JudgeInput): string {
-  return `You are a game physics judge. Given an actor, action, target, and environment, assess the probability of success. Be realistic and grounded — no magic, no impossible technology.
+export interface GameMasterResult extends JudgeResult {
+  effects: {
+    actorHealthDelta: number        // negative = damage, positive = healing
+    targetHealthDelta: number
+    actorEnergyDelta: number
+    actorInjury: string | null      // new injury description
+    targetInjury: string | null
+    actorStatusChange: PhysicalState['status'] | null
+    targetStatusChange: PhysicalState['status'] | null
+    itemConsumed: boolean           // was an item used up?
+    relationshipImpact: number      // -10 to +10 on the actor→target relationship
+  }
+}
 
-Actor: ${input.actor.name} (${input.actor.occupation}) [tags: ${input.actor.tags.join(', ')}]
+function buildGameMasterPrompt(input: JudgeInput): string {
+  const actorHealth = input.actor.health != null ? `Health: ${input.actor.health}/100` : ''
+  const actorInjuries = input.actor.injuries?.length ? `Injuries: ${input.actor.injuries.join(', ')}` : ''
+  const targetHealth = input.target.health != null ? `Health: ${input.target.health}/100` : ''
+
+  return `You are the Game Master of a text adventure. You adjudicate ANY action an NPC attempts — physical, social, technical, creative, or combat. Be realistic and grounded. No magic.
+
+Actor: ${input.actor.name} (${input.actor.occupation}) [${input.actor.tags.join(', ')}] ${actorHealth} ${actorInjuries}
 Action: ${input.action}
-Target: ${input.target.name} [tags: ${input.target.tags.join(', ')}]
-Environment: ${input.environment.name} [tags: ${input.environment.tags.join(', ')}]
+Target: ${input.target.name} [${input.target.tags.join(', ')}] ${targetHealth}
+Environment: ${input.environment.name} [${input.environment.tags.join(', ')}]
 Context: ${input.context}
 
 PROBABILITY BANDS:
-- 5-15%: Acting far outside capabilities, no relevant skills/tools
-- 25-40%: Adjacent skill, improvised approach
-- 50-65%: Competent with adequate tools
-- 75-90%: Expert with proper tools in good conditions
+- 5-15%: Far outside capabilities, no skill, bad conditions
+- 25-40%: Adjacent skill, improvised, some chance
+- 50-65%: Competent with adequate tools/skills
+- 75-90%: Expert, ideal tools, favorable conditions
+- Injuries/low health reduce probability by 10-30%
 
-Respond with ONLY JSON (no markdown):
+For COMBAT: Consider size, training, weapons, injuries, surprise. Unarmed vs armed is very unfavorable.
+For SOCIAL (charm, seduce, intimidate, deceive): Consider personality match, relationship, context. Charisma matters.
+For TECHNICAL: Consider occupation tags, tools available, complexity.
+
+Respond with ONLY JSON:
 {
   "probability": 1-99,
-  "reasoning": "brief explanation of probability",
-  "narrativeHint": "brief description of what happens"
+  "reasoning": "why this probability (1 sentence)",
+  "narrativeHint": "what happens (1-2 sentences, vivid)",
+  "effects": {
+    "actorHealthDelta": 0,
+    "targetHealthDelta": 0,
+    "actorEnergyDelta": -5,
+    "actorInjury": null or "injury description",
+    "targetInjury": null or "injury description",
+    "actorStatusChange": null or "unconscious" or "dead" or "restrained",
+    "targetStatusChange": null or "unconscious" or "dead" or "restrained",
+    "itemConsumed": false,
+    "relationshipImpact": 0
+  }
 }`
 }
 
@@ -39,9 +73,21 @@ function rollOutcome(probability: number): JudgeResult['outcome'] {
   return 'failure'
 }
 
-export async function judgeAction(input: JudgeInput): Promise<JudgeResult> {
+const DEFAULT_EFFECTS: GameMasterResult['effects'] = {
+  actorHealthDelta: 0,
+  targetHealthDelta: 0,
+  actorEnergyDelta: -5,
+  actorInjury: null,
+  targetInjury: null,
+  actorStatusChange: null,
+  targetStatusChange: null,
+  itemConsumed: false,
+  relationshipImpact: 0,
+}
+
+export async function judgeAction(input: JudgeInput): Promise<GameMasterResult> {
   try {
-    const prompt = buildJudgePrompt(input)
+    const prompt = buildGameMasterPrompt(input)
     const raw = await llmCall('simulation', prompt, 'Judge this action.', true)
 
     let cleaned = raw.trim()
@@ -49,49 +95,78 @@ export async function judgeAction(input: JudgeInput): Promise<JudgeResult> {
       cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
     }
 
-    const parsed = JSON.parse(cleaned) as { probability: number; reasoning: string; narrativeHint: string }
+    const parsed = JSON.parse(cleaned) as {
+      probability: number
+      reasoning: string
+      narrativeHint: string
+      effects?: Partial<GameMasterResult['effects']>
+    }
+
     const probability = Math.max(1, Math.min(99, parsed.probability))
     const outcome = rollOutcome(probability)
+
+    // On failure, flip some effects (e.g., the actor takes damage instead of dealing it)
+    const effects = { ...DEFAULT_EFFECTS, ...(parsed.effects ?? {}) }
+    if (outcome === 'failure') {
+      // If this was combat, the actor might get hurt instead
+      if (effects.targetHealthDelta < 0) {
+        effects.actorHealthDelta = Math.round(effects.targetHealthDelta * 0.5)
+        effects.targetHealthDelta = 0
+        effects.actorInjury = effects.targetInjury
+        effects.targetInjury = null
+      }
+      effects.actorStatusChange = null
+      effects.targetStatusChange = null
+    } else if (outcome === 'partial_success') {
+      // Reduce the magnitude of effects
+      effects.targetHealthDelta = Math.round(effects.targetHealthDelta * 0.5)
+      effects.actorHealthDelta = Math.round(effects.actorHealthDelta * 0.5)
+      effects.targetStatusChange = null // no knockout on partial
+    }
 
     return {
       probability,
       reasoning: parsed.reasoning,
       outcome,
       narrativeHint: parsed.narrativeHint,
+      effects,
     }
-  } catch (error) {
-    // Fallback: 50/50 with generic narrative
+  } catch {
     const outcome = rollOutcome(50)
     return {
       probability: 50,
       reasoning: 'Could not assess — defaulting to even odds',
       outcome,
-      narrativeHint: outcome === 'failure' ? 'The attempt did not succeed.' : 'The attempt succeeded, barely.',
+      narrativeHint: outcome === 'failure' ? 'The attempt did not succeed.' : 'It partially worked.',
+      effects: { ...DEFAULT_EFFECTS },
     }
   }
 }
 
-// Deterministic pre-checks before calling the LLM judge
 export function preCheckAction(
   npc: NPC,
-  action: string,
+  _action: string,
   targetLocation: Location | null,
   requiredItem: Item | null
 ): { pass: boolean; reason: string } {
-  // Must be at the location
+  if (npc.physical.status === 'dead') {
+    return { pass: false, reason: `${npc.name} is dead` }
+  }
+  if (npc.physical.status === 'unconscious') {
+    return { pass: false, reason: `${npc.name} is unconscious` }
+  }
+  if (npc.physical.status === 'restrained') {
+    return { pass: false, reason: `${npc.name} is restrained` }
+  }
   if (targetLocation && npc.currentLocationId !== targetLocation.id) {
     return { pass: false, reason: `${npc.name} is not at ${targetLocation.name}` }
   }
-
-  // Must have required item
   if (requiredItem && !npc.inventory.some((i) => i.id === requiredItem.id)) {
     return { pass: false, reason: `${npc.name} doesn't have ${requiredItem.name}` }
   }
-
   return { pass: true, reason: 'OK' }
 }
 
-// Search a location container for items — deterministic + LLM for discovery
 export async function searchContainer(
   npc: NPC,
   location: Location,
@@ -99,14 +174,10 @@ export async function searchContainer(
 ): Promise<Item | null> {
   const container = location.containers.find((c) => c.id === containerId)
   if (!container) return null
-
-  // Already searched
   if (container.searched) return null
 
-  // Mark as searched
   container.searched = true
 
-  // Check if NPC's occupation tags match expected item types
   const hasSkillMatch = npc.occupationTags.some((tag) =>
     container.expectedItemTypes.some((expected) =>
       tag.toLowerCase().includes(expected.toLowerCase()) ||
@@ -117,27 +188,21 @@ export async function searchContainer(
   const baseChance = 0.6
   const skillBonus = hasSkillMatch ? 0.2 : 0
   const difficultyPenalty = container.searchDifficulty * 0.08
+  const healthPenalty = npc.physical.health < 50 ? 0.15 : 0
 
-  const successChance = Math.max(0.1, baseChance + skillBonus - difficultyPenalty)
+  const successChance = Math.max(0.1, baseChance + skillBonus - difficultyPenalty - healthPenalty)
 
   if (Math.random() > successChance) return null
 
-  // Generate a plausible item based on container type
   try {
-    const prompt = `You are a game item generator. An NPC named ${npc.name} (${npc.occupation}) is searching a "${container.name}" at "${location.name}" (${location.type}).
-Expected item types in this container: ${container.expectedItemTypes.join(', ')}.
+    const prompt = `You are a game item generator. ${npc.name} (${npc.occupation}) searches "${container.name}" at "${location.name}" (${location.type}).
+Expected items: ${container.expectedItemTypes.join(', ')}.
 Location tags: ${location.tags.join(', ')}.
 
-Generate ONE plausible item they find. Keep it grounded and realistic for the setting.
+Generate ONE plausible, grounded item. Respond with ONLY JSON:
+{"name": "item name", "tags": ["tag1"], "description": "brief"}`
 
-Respond with ONLY JSON (no markdown):
-{
-  "name": "item name",
-  "tags": ["tag1", "tag2"],
-  "description": "brief description"
-}`
-
-    const raw = await llmCall('simulation', prompt, 'Generate an item.', true)
+    const raw = await llmCall('simulation', prompt, 'Generate item.', true)
     let cleaned = raw.trim()
     if (cleaned.startsWith('```')) {
       cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
@@ -145,7 +210,7 @@ Respond with ONLY JSON (no markdown):
 
     const parsed = JSON.parse(cleaned) as { name: string; tags: string[]; description: string }
 
-    const item: Item = {
+    return {
       id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: parsed.name,
       tags: parsed.tags,
@@ -153,8 +218,6 @@ Respond with ONLY JSON (no markdown):
       ownerId: npc.id,
       description: parsed.description,
     }
-
-    return item
   } catch {
     return null
   }

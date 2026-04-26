@@ -5,9 +5,12 @@ import {
   addNpcKnowledge,
   moveNpc,
   getTopMemories,
+  applyPhysicalEffects,
+  updateNpcRelationship,
 } from '../game/state.js'
 import { llmCall } from '../llm/client.js'
-import { judgeAction, preCheckAction, searchContainer } from '../llm/judge.js'
+import { judgeAction, searchContainer } from '../llm/judge.js'
+import type { GameMasterResult } from '../llm/judge.js'
 import { generateDiscovery } from './discovery.js'
 import { broadcastEvent } from '../routes/events.js'
 import {
@@ -293,13 +296,54 @@ async function executeSearch(npc: NPC, step: PlanStep, world: WorldState): Promi
 async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Promise<{ executed: boolean; description: string }> {
   const location = world.locations.find((l) => l.id === npc.currentLocationId)
 
+  // Find target NPC if this action targets one
+  const targetNpc = world.npcs.find((n) =>
+    n.id === step.target ||
+    n.name.toLowerCase().includes(step.target.toLowerCase()) ||
+    step.target.toLowerCase().includes(n.name.toLowerCase())
+  )
+
   const result = await judgeAction({
-    actor: { name: npc.name, occupation: npc.occupation, tags: npc.occupationTags },
+    actor: {
+      name: npc.name,
+      occupation: npc.occupation,
+      tags: npc.occupationTags,
+      health: npc.physical.health,
+      injuries: npc.physical.injuries,
+    },
     action: step.description,
-    target: { name: step.target, tags: [] },
+    target: {
+      name: targetNpc?.name ?? step.target,
+      tags: targetNpc?.occupationTags ?? [],
+      health: targetNpc?.physical.health,
+    },
     environment: { name: location?.name ?? 'unknown', tags: location?.tags ?? [] },
-    context: `${npc.name} is attempting: ${step.description}. Inventory: ${npc.inventory.map((i) => i.name).join(', ') || 'nothing'}`,
+    context: `${npc.name} is attempting: ${step.description}. Inventory: ${npc.inventory.map((i) => i.name).join(', ') || 'nothing'}. ${targetNpc ? `Target ${targetNpc.name} is ${targetNpc.physical.status}, health ${targetNpc.physical.health}/100.` : ''}`,
   })
+
+  // Apply physical effects
+  const gmResult = result as GameMasterResult
+  if (gmResult.effects) {
+    applyPhysicalEffects(npc.id, {
+      healthDelta: gmResult.effects.actorHealthDelta,
+      energyDelta: gmResult.effects.actorEnergyDelta,
+      injury: gmResult.effects.actorInjury,
+      statusChange: gmResult.effects.actorStatusChange,
+    })
+    if (targetNpc) {
+      applyPhysicalEffects(targetNpc.id, {
+        healthDelta: gmResult.effects.targetHealthDelta,
+        injury: gmResult.effects.targetInjury,
+        statusChange: gmResult.effects.targetStatusChange,
+      })
+      if (gmResult.effects.relationshipImpact !== 0) {
+        updateNpcRelationship(npc.id, targetNpc.id, {
+          affection: gmResult.effects.relationshipImpact,
+          trust: gmResult.effects.relationshipImpact,
+        })
+      }
+    }
+  }
 
   step.result = `${result.outcome}: ${result.narrativeHint}`
 
@@ -338,7 +382,7 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
     isSecret: false,
   }])
 
-  // On strong success of an attempt_objective, trigger discovery
+  // On strong success, trigger discovery
   if (result.outcome === 'strong_success' && location) {
     console.log(`[Discovery] ${npc.name} triggers discovery at ${location.name}`)
     await generateDiscovery(npc, location, step.description, world)
@@ -393,6 +437,16 @@ export async function processNpcTurn(
   npc: NPC,
   world: WorldState
 ): Promise<{ action: string; llmCalls: number }> {
+  // Dead or unconscious NPCs can't act
+  if (npc.physical.status === 'dead' || npc.physical.status === 'unconscious') {
+    return { action: `${npc.physical.status}`, llmCalls: 0 }
+  }
+
+  // Restrained NPCs can only plan escape, not execute other steps
+  if (npc.physical.status === 'restrained' && npc.activePlan?.goal?.toLowerCase().includes('escape') === false) {
+    return { action: 'restrained', llmCalls: 0 }
+  }
+
   const activation = calculateActivation(npc, world)
 
   // Low activation — do nothing

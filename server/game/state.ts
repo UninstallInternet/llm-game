@@ -268,3 +268,34 @@ export function getTopMemories(npc: NPC, currentTick: number): KnowledgeEntry[] 
     .slice(0, TOP_K_MEMORIES)
     .map((s) => s.entry)
 }
+
+export function applyPhysicalEffects(
+  npcId: string,
+  effects: {
+    healthDelta?: number
+    energyDelta?: number
+    injury?: string | null
+    statusChange?: NPC['physical']['status'] | null
+  }
+): void {
+  if (!currentWorld) return
+  const npc = getNpc(npcId)
+  if (!npc) return
+
+  const health = Math.max(0, Math.min(100, npc.physical.health + (effects.healthDelta ?? 0)))
+  const energy = Math.max(0, Math.min(100, npc.physical.energy + (effects.energyDelta ?? 0)))
+  const injuries = effects.injury
+    ? [...npc.physical.injuries.slice(-4), effects.injury]
+    : npc.physical.injuries
+
+  // Determine status
+  let status = effects.statusChange ?? npc.physical.status
+  if (health <= 0) status = 'dead'
+  else if (health <= 15 && status === 'alive') status = 'unconscious'
+
+  const updated: NPC = {
+    ...npc,
+    physical: { health, energy, injuries, status },
+  }
+  currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+}

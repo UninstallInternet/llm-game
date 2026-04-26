@@ -267,6 +267,7 @@ export async function generateWorld(
         description: item.description,
       })),
       activePlan: null,
+      physical: { health: 100, energy: 100, injuries: [], status: 'alive' as const },
     }
   })
 

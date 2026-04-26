@@ -77,6 +77,14 @@ export interface NPC {
   factionId: string | null
   inventory: Item[]
   activePlan: NpcPlan | null
+  physical: PhysicalState
+}
+
+export interface PhysicalState {
+  health: number          // 0-100, 0 = dead
+  energy: number          // 0-100, drains with actions, recovers with rest
+  injuries: string[]      // ["bruised ribs", "concussion"]
+  status: 'alive' | 'unconscious' | 'dead' | 'restrained'
 }
 
 // ─── Items & Containers ───
@@ -101,11 +109,9 @@ export interface LocationContainer {
 
 // ─── NPC Planning ───
 
-export type PlanAction = 'search' | 'travel' | 'recruit' | 'use_item' | 'attempt_objective' | 'observe' | 'confront' | 'share_info'
-
 export interface PlanStep {
-  action: PlanAction
-  target: string          // location ID, NPC ID, or item description
+  action: string          // open-ended: "search", "travel", "charm", "fight", "sabotage", "heal", anything
+  target: string          // location ID, NPC ID, or description
   description: string
   status: 'pending' | 'active' | 'completed' | 'failed' | 'skipped'
   result?: string
