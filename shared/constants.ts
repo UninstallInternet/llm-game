@@ -20,7 +20,7 @@ export const MAX_KNOWLEDGE_PER_NPC = 50
 export const KNOWLEDGE_RELEVANCE_WINDOW = 20
 
 export const LLM_MODELS = {
-  worldGen: 'gpt-4o-mini',
+  worldGen: 'gpt-4o',
   conversation: 'gpt-4o-mini',
   simulation: 'gpt-4o-mini',
 } as const

@@ -120,6 +120,29 @@ function parseJsonResponse(text: string): unknown {
   return JSON.parse(cleaned)
 }
 
+async function callLlm(
+  tier: 'worldGen' | 'simulation',
+  prompt: string,
+  userMsg: string,
+  onProgress: ProgressCallback,
+  label: string
+): Promise<unknown> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      console.log(`[WorldGen:${label}] Attempt ${attempt}`)
+      const raw = await llmCall(tier, prompt, userMsg, true)
+      console.log(`[WorldGen:${label}] Response: ${raw.length} chars`)
+      return parseJsonResponse(raw)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown'
+      console.error(`[WorldGen:${label}] Attempt ${attempt} failed: ${msg}`)
+      if (attempt === 2) throw new Error(`${label} failed: ${msg}`)
+      onProgress('retrying', `${label} retry...`)
+    }
+  }
+  throw new Error(`${label} produced no data`)
+}
+
 export async function generateWorld(
   settingDescription: string,
   npcCount: number,
@@ -128,28 +151,107 @@ export async function generateWorld(
 ): Promise<WorldState> {
   const worldId = uuid()
 
-  onProgress('generating', `Creating world from: "${settingDescription}"...`)
+  // ── Stage 1: Skeleton (gpt-4o) — locations, factions, mystery, events ──
+  onProgress('generating', 'Creating world skeleton...')
 
-  const prompt = buildWorldGenPrompt(settingDescription, npcCount, locationCount)
+  const skeletonPrompt = `You are a world builder for a text adventure. Generate the SKELETON of a settlement — locations, factions, a mystery, and events. DO NOT generate NPCs yet.
 
-  let raw: RawWorldData | null = null
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      console.log(`[WorldGen] Attempt ${attempt}, prompt length: ${prompt.length} chars`)
-      const rawResponse = await llmCall('worldGen', prompt, 'Generate the world now.', true)
-      console.log(`[WorldGen] Got response: ${rawResponse.length} chars`)
-      onProgress('parsing', 'Parsing world data...')
-      raw = parseJsonResponse(rawResponse) as RawWorldData
-      console.log(`[WorldGen] Parsed: ${raw.npcs?.length ?? 0} NPCs, ${raw.locations?.length ?? 0} locations`)
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown'
-      console.error(`[WorldGen] Attempt ${attempt} failed: ${msg}`)
-      if (attempt === 2) throw new Error(`World generation failed after 2 attempts: ${msg}`)
-      onProgress('retrying', `Attempt ${attempt} failed (${msg}), retrying...`)
+SETTING: ${settingDescription}
+Generate EXACTLY ${locationCount} locations.
+
+Each location needs: id (loc_1, loc_2...), name, type, description (2-3 sentences), connections (bidirectional), isPublic, ownerId (null for now), tags, securityLevel (0-5), containers (searchable spots with expectedItemTypes), fixtures (immovable features).
+
+Generate 2-3 factions, 1 mystery with clues, and 3-5 timed events.
+
+Respond with ONLY JSON:
+{
+  "name": "Settlement name",
+  "locations": [{ "id": "loc_1", "name": "...", "type": "...", "description": "...", "connections": ["loc_2"], "isPublic": true, "ownerId": null, "tags": ["indoor"], "securityLevel": 0, "containers": [{"name": "tool chest", "expectedItemTypes": ["tools"], "searchDifficulty": 1}], "fixtures": ["workbench"] }],
+  "factions": [{ "id": "faction_1", "name": "...", "description": "...", "publicGoal": "...", "secretGoal": "..." }],
+  "mysteries": [{ "name": "...", "description": "...", "resolution": "...", "clueLocationIds": ["loc_1"] }],
+  "events": [{ "type": "crisis", "title": "...", "description": "...", "triggerDay": 2, "triggerTime": "morning", "involvedNpcIds": [], "consequences": ["..."] }]
+}`
+
+  const skeleton = await callLlm('worldGen', skeletonPrompt, 'Generate the world skeleton.', onProgress, 'Skeleton') as {
+    name: string
+    locations: RawWorldData['locations']
+    factions: RawWorldData['factions']
+    mysteries: RawWorldData['mysteries']
+    events: RawWorldData['events']
+  }
+
+  onProgress('building', `${skeleton.name} — ${skeleton.locations?.length ?? 0} locations created`)
+
+  // ── Stage 2: NPCs in batches (gpt-4o-mini) ──
+  const locationList = (skeleton.locations ?? []).map((l) => `${l.id}: ${l.name} (${l.type})`).join(', ')
+  const factionList = (skeleton.factions ?? []).map((f) => `${f.id}: ${f.name}`).join(', ')
+  const mysteryDesc = (skeleton.mysteries ?? []).map((m) => m.name).join(', ')
+
+  const allNpcs: RawWorldData['npcs'] = []
+  const batchSize = 5
+  const batches = Math.ceil(npcCount / batchSize)
+
+  for (let batch = 0; batch < batches; batch++) {
+    const remaining = npcCount - allNpcs.length
+    const count = Math.min(batchSize, remaining)
+    const startId = allNpcs.length + 1
+
+    onProgress('generating', `Creating characters ${allNpcs.length + 1}-${allNpcs.length + count} of ${npcCount}...`)
+
+    const existingNpcs = allNpcs.map((n) => `${n.id}: ${n.name} (${n.occupation}, faction: ${n.factionId ?? 'none'})`).join('\n')
+
+    const npcPrompt = `Generate ${count} NPCs for a text adventure set in "${skeleton.name}". Setting: ${settingDescription}
+
+Locations: ${locationList}
+Factions: ${factionList}
+Mystery: ${mysteryDesc}
+${existingNpcs ? `Existing NPCs (create relationships with these):\n${existingNpcs}` : ''}
+
+NPC IDs should start at npc_${startId}. Each NPC needs:
+- Unique name, age, occupation, personality (traits, speechStyle, quirk), appearance
+- Public goal + secret goal (secret must conflict with another NPC)
+- 1-2 secrets, relationships with existing NPCs (trust/affection/respect/fear/significantMemories)
+- Faction assignment (or null), schedule across locations
+- Every NPC MUST have a SECRET GOAL that creates tension
+
+Respond with ONLY JSON:
+{
+  "npcs": [{
+    "id": "npc_${startId}", "name": "...", "age": 35, "occupation": "...",
+    "personality": { "traits": ["..."], "speechStyle": "...", "quirk": "..." },
+    "appearance": "...",
+    "goals": { "public": "...", "secret": "..." },
+    "secrets": ["..."],
+    "relationships": [{ "targetNpcId": "npc_X", "type": "friend", "trust": 50, "affection": 30, "respect": 40, "fear": 0, "significantMemories": ["..."] }],
+    "factionId": "faction_1" or null,
+    "scheduleLocationIds": { "morning": "loc_1", "afternoon": "loc_2", "evening": "loc_1", "night": "loc_1" }
+  }]
+}`
+
+    const batchResult = await callLlm('simulation', npcPrompt, `Generate NPCs ${startId}-${startId + count - 1}.`, onProgress, `NPCs batch ${batch + 1}`) as { npcs: RawWorldData['npcs'] }
+    allNpcs.push(...(batchResult.npcs ?? []))
+
+    console.log(`[WorldGen] Batch ${batch + 1}: ${batchResult.npcs?.length ?? 0} NPCs (total: ${allNpcs.length})`)
+  }
+
+  // Update mystery clueNpcIds now that we have NPCs
+  for (const mystery of skeleton.mysteries ?? []) {
+    if (!mystery.clueNpcIds || mystery.clueNpcIds.length === 0) {
+      mystery.clueNpcIds = allNpcs.slice(0, 2).map((n) => n.id)
     }
   }
-  if (!raw) throw new Error('World generation produced no data')
+
+  // Assemble raw data
+  const raw: RawWorldData = {
+    name: skeleton.name,
+    locations: skeleton.locations ?? [],
+    factions: skeleton.factions ?? [],
+    npcs: allNpcs,
+    mysteries: skeleton.mysteries ?? [],
+    events: skeleton.events ?? [],
+  }
+
+  onProgress('building', `Assembling ${raw.npcs.length} characters in ${raw.locations.length} locations...`)
 
   // Transform raw data into proper WorldState
   onProgress('building', 'Building locations...')
