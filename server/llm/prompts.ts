@@ -163,18 +163,33 @@ RULES:
     return `Feels about ${otherName}: ${rel.type}, ${feel}${trust}. ${rel.significantMemories.slice(-1).join('')}`
   }
 
-  const user = `Location: ${location?.name ?? 'unknown'} (${world.time.timeOfDay}, Day ${world.time.day})
+  // Others present at the location
+  const othersPresent = world.npcs
+    .filter((n) => n.id !== npc1.id && n.id !== npc2.id && n.currentLocationId === npc1.currentLocationId)
+    .map((n) => n.name)
+    .join(', ')
+
+  // Active plans (briefly, to color conversation)
+  const plan1 = npc1.activePlan?.status === 'active' ? `Currently working on: ${npc1.activePlan.goal}` : ''
+  const plan2 = npc2.activePlan?.status === 'active' ? `Currently working on: ${npc2.activePlan.goal}` : ''
+
+  const user = `Location: ${location?.name ?? 'unknown'} — ${location?.description?.slice(0, 80) ?? ''} (${world.time.timeOfDay}, Day ${world.time.day})
+${othersPresent ? `Others nearby who might overhear: ${othersPresent}` : 'They are alone.'}
 ${relevantEvents ? `Current events: ${relevantEvents}` : ''}
 
-NPC_1: ${npc1.name}, ${npc1.occupation}, mood: ${npc1.mood.current}
+NPC_1: ${npc1.name}, ${npc1.occupation}, mood: ${npc1.mood.current}, hp: ${npc1.physical.health}/100
 Personality: ${npc1.personality.traits.join(', ')}. ${npc1.personality.speechStyle}.
 Goal: ${npc1.goals.public} (secret: ${npc1.goals.secret})
+Inventory: ${npc1.inventory.map((i) => i.name).join(', ') || 'nothing'}
+${plan1}
 Knows: ${k1 || 'nothing notable'}
 ${formatRel(rel1to2, npc2.name)}
 
-NPC_2: ${npc2.name}, ${npc2.occupation}, mood: ${npc2.mood.current}
+NPC_2: ${npc2.name}, ${npc2.occupation}, mood: ${npc2.mood.current}, hp: ${npc2.physical.health}/100
 Personality: ${npc2.personality.traits.join(', ')}. ${npc2.personality.speechStyle}.
 Goal: ${npc2.goals.public} (secret: ${npc2.goals.secret})
+Inventory: ${npc2.inventory.map((i) => i.name).join(', ') || 'nothing'}
+${plan2}
 Knows: ${k2 || 'nothing notable'}
 ${formatRel(rel2to1, npc1.name)}
 

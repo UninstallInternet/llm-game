@@ -61,45 +61,105 @@ export async function formPlan(npc: NPC, world: WorldState): Promise<NpcPlan | n
     .map((k) => k.content)
     .join('\n- ')
 
-  const nearbyNpcs = world.npcs
+  // ── Situational awareness: who's here right now ──
+  const npcsHere = world.npcs
     .filter((n) => n.id !== npc.id && n.currentLocationId === npc.currentLocationId)
-    .map((n) => `${n.name} (${n.occupation})`)
-    .join(', ')
+    .map((n) => {
+      const rel = npc.relationships.find((r) => r.targetNpcId === n.id)
+      const feeling = rel
+        ? `(${rel.type}, ${rel.trust > 20 ? 'trust' : rel.trust < -20 ? 'distrust' : 'neutral'})`
+        : '(stranger)'
+      return `${n.name} (${n.occupation}) ${feeling} [${n.physical.status}, hp:${n.physical.health}]`
+    })
+    .join('\n  ')
 
-  const knownLocations = world.locations
-    .map((l) => `${l.id}: ${l.name} (${l.type})`)
-    .join('\n')
+  // ── Role-based world knowledge: what this NPC would know ──
+  const locationDetails = world.locations.map((loc) => {
+    const security = loc.securityLevel > 0 ? ` [SECURITY: ${loc.securityLevel}/5]` : ''
+    const containers = loc.containers
+      .filter((c) => !c.searched)
+      .map((c) => c.name)
+    const containerStr = containers.length > 0 ? ` — searchable: ${containers.join(', ')}` : ''
+    const fixtures = loc.fixtures.length > 0 ? ` — has: ${loc.fixtures.join(', ')}` : ''
+    const npcsAt = world.npcs
+      .filter((n) => n.id !== npc.id && n.currentLocationId === loc.id)
+      .map((n) => n.name)
+    const whosThere = npcsAt.length > 0 ? ` — people: ${npcsAt.join(', ')}` : ''
 
-  const prompt = `You are a planning engine for an NPC in a text adventure game. Given the NPC's goals, knowledge, and situation, create a concrete plan of action.
+    // Filter detail by occupation relevance
+    const isRelevant = npc.occupationTags.some((tag) =>
+      loc.tags.some((lt) => lt.includes(tag) || tag.includes(lt))
+    ) || loc.type === 'workshop' || loc.type === 'tavern'
 
-NPC: ${npc.name}, ${npc.occupation}
-Location: ${location?.name ?? 'unknown'}
-Public goal: ${npc.goals.public}
-Secret goal: ${npc.goals.secret}
-Mood: ${npc.mood.current}
-Inventory: ${npc.inventory.map((i) => i.name).join(', ') || 'nothing'}
-Occupation skills: ${npc.occupationTags.join(', ')}
+    const detail = isRelevant ? `${containerStr}${fixtures}` : ''
 
-What ${npc.name} knows:
-- ${topMemories || 'nothing notable'}
+    return `  ${loc.id}: ${loc.name} (${loc.type})${security}${detail}${whosThere}`
+  }).join('\n')
 
-Nearby: ${nearbyNpcs || 'nobody'}
+  // ── Known people on the station ──
+  const knownPeople = world.npcs
+    .filter((n) => n.id !== npc.id)
+    .map((n) => {
+      const rel = npc.relationships.find((r) => r.targetNpcId === n.id)
+      if (rel) {
+        return `${n.name} (${n.occupation}): ${rel.type}, trust:${rel.trust}, affection:${rel.affection}`
+      }
+      return `${n.name} (${n.occupation}): no relationship`
+    })
+    .join('\n  ')
 
-Available locations:
-${knownLocations}
+  // ── Current location detail ──
+  const currentLocDetail = location
+    ? `${location.name} (${location.type}). ${location.description}
+  Fixtures: ${location.fixtures.join(', ') || 'none'}
+  Unsearched containers: ${location.containers.filter((c) => !c.searched).map((c) => c.name).join(', ') || 'none'}
+  Security level: ${location.securityLevel}/5`
+    : 'unknown'
 
-Create a plan with 2-6 concrete steps. Each step must be one of: search, travel, recruit, use_item, attempt_objective, observe, confront, share_info.
-The plan should be achievable and grounded — no magic or impossible technology.
+  const prompt = `You are a planning engine for an NPC in a text adventure. Given their goals, knowledge, skills, and awareness of the world, create a concrete, grounded plan.
 
-Respond with ONLY JSON (no markdown):
+CHARACTER:
+  Name: ${npc.name}, ${npc.age}-year-old ${npc.occupation}
+  Skills: ${npc.occupationTags.join(', ')}
+  Personality: ${npc.personality.traits.join(', ')}
+  Public goal: ${npc.goals.public}
+  Secret goal: ${npc.goals.secret}
+  Mood: ${npc.mood.current}
+  Health: ${npc.physical.health}/100 ${npc.physical.injuries.length > 0 ? `(injuries: ${npc.physical.injuries.join(', ')})` : ''}
+  Inventory: ${npc.inventory.map((i) => `${i.name} [${i.tags.join(',')}]`).join(', ') || 'nothing'}
+
+CURRENT LOCATION:
+  ${currentLocDetail}
+
+PEOPLE HERE RIGHT NOW:
+  ${npcsHere || 'nobody'}
+
+WHAT ${npc.name.toUpperCase()} KNOWS:
+  ${topMemories || 'nothing notable'}
+
+ALL KNOWN PEOPLE:
+  ${knownPeople}
+
+ALL LOCATIONS:
+${locationDetails}
+
+INSTRUCTIONS:
+- Create a plan with 2-6 concrete steps to pursue your secret goal.
+- Actions can be ANYTHING plausible: search, travel, recruit, charm, intimidate, fight, sabotage, steal, heal, build, observe, confront, seduce, deceive, hide, share_info, use_item, etc.
+- Use real location IDs (loc_X) for travel targets.
+- Use real NPC names for social targets.
+- Consider who you trust, who might help, who might oppose you.
+- Consider what tools/items you have or could find.
+- Consider security levels — high-security areas need preparation.
+- Be realistic about your skills. A scientist shouldn't plan to fight a guard.
+- Your personality should influence your approach (cautious vs bold, honest vs deceptive).
+
+Respond with ONLY JSON:
 {
-  "goal": "what the NPC is trying to achieve",
+  "goal": "what you're trying to achieve",
   "motivation": "why (1 sentence)",
   "steps": [
-    { "action": "travel", "target": "loc_id", "description": "Go to the workshop to find tools" },
-    { "action": "search", "target": "loc_id", "description": "Search for a cutting tool" },
-    { "action": "recruit", "target": "npc_id or name", "description": "Ask the engineer for help" },
-    { "action": "attempt_objective", "target": "description", "description": "Try to open the sealed door" }
+    { "action": "action_type", "target": "loc_id or npc_name or item", "description": "Concrete description of what you do and why" }
   ]
 }`
 
