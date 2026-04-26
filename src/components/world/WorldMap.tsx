@@ -8,73 +8,129 @@ interface NodePosition {
   y: number
 }
 
-// Force-directed layout: connected nodes attract, all nodes repel
+// Deterministic seeded random for consistent layout
+function seededRandom(seed: number): () => number {
+  let s = seed
+  return () => {
+    s = (s * 16807 + 0) % 2147483647
+    return (s - 1) / 2147483646
+  }
+}
+
 function layoutNodes(locations: Location[]): NodePosition[] {
   const count = locations.length
   if (count === 0) return []
+  if (count === 1) return [{ id: locations[0].id, x: 190, y: 140 }]
 
   const W = 380
-  const H = 260
-  const PAD = 40
+  const H = 280
+  const PAD = 50
 
-  // Initialize positions in a grid to avoid overlap
-  const cols = Math.ceil(Math.sqrt(count))
-  const positions: NodePosition[] = locations.map((loc, i) => ({
-    id: loc.id,
-    x: PAD + ((i % cols) / Math.max(1, cols - 1)) * (W - PAD * 2) + (Math.random() - 0.5) * 20,
-    y: PAD + (Math.floor(i / cols) / Math.max(1, Math.ceil(count / cols) - 1)) * (H - PAD * 2) + (Math.random() - 0.5) * 20,
-  }))
+  // Seed from location IDs for deterministic layout
+  const seed = locations.reduce((s, l) => s + l.id.charCodeAt(l.id.length - 1) * 31, 7)
+  const rand = seededRandom(seed)
 
-  // Build adjacency for spring forces
+  // BFS-based initial placement: start from first location, fan out by connections
+  const placed = new Map<string, { x: number; y: number }>()
+  const queue: string[] = [locations[0].id]
+  const visited = new Set<string>()
+  const cx = W / 2
+  const cy = H / 2
+
+  placed.set(locations[0].id, { x: cx, y: cy })
+  visited.add(locations[0].id)
+
+  const angleStep = (2 * Math.PI) / Math.max(4, count)
+  let ring = 1
+
+  while (queue.length > 0) {
+    const batch = [...queue]
+    queue.length = 0
+
+    for (const locId of batch) {
+      const loc = locations.find((l) => l.id === locId)
+      if (!loc) continue
+      const parent = placed.get(locId)!
+
+      let childIdx = 0
+      for (const connId of loc.connections) {
+        if (visited.has(connId)) continue
+        visited.add(connId)
+        queue.push(connId)
+
+        const baseAngle = angleStep * (placed.size - 1) + childIdx * 0.8
+        const dist = 60 + ring * 30
+        const x = parent.x + Math.cos(baseAngle) * dist + (rand() - 0.5) * 15
+        const y = parent.y + Math.sin(baseAngle) * dist + (rand() - 0.5) * 15
+        placed.set(connId, { x, y })
+        childIdx++
+      }
+    }
+    ring++
+  }
+
+  // Place any unvisited (shouldn't happen but safety)
+  for (const loc of locations) {
+    if (!placed.has(loc.id)) {
+      placed.set(loc.id, { x: PAD + rand() * (W - PAD * 2), y: PAD + rand() * (H - PAD * 2) })
+    }
+  }
+
+  // Convert to array
+  let positions: NodePosition[] = locations.map((loc) => {
+    const p = placed.get(loc.id)!
+    return { id: loc.id, x: p.x, y: p.y }
+  })
+
+  // Build adjacency
   const adjSet = new Set<string>()
   for (const loc of locations) {
     for (const conn of loc.connections) {
       adjSet.add(`${loc.id}|${conn}`)
     }
   }
-
   const isConnected = (a: string, b: string) => adjSet.has(`${a}|${b}`) || adjSet.has(`${b}|${a}`)
 
-  // Run force simulation (50 iterations)
-  for (let iter = 0; iter < 60; iter++) {
+  // Force-directed refinement (40 iterations)
+  for (let iter = 0; iter < 40; iter++) {
     const forces = positions.map(() => ({ fx: 0, fy: 0 }))
 
     for (let i = 0; i < count; i++) {
       for (let j = i + 1; j < count; j++) {
         const dx = positions[j].x - positions[i].x
         const dy = positions[j].y - positions[i].y
-        const dist = Math.max(10, Math.sqrt(dx * dx + dy * dy))
+        const dist = Math.max(15, Math.sqrt(dx * dx + dy * dy))
         const nx = dx / dist
         const ny = dy / dist
 
-        // Repulsion (all pairs)
-        const repulsion = 3000 / (dist * dist)
+        // Repulsion
+        const repulsion = 2500 / (dist * dist)
         forces[i].fx -= nx * repulsion
         forces[i].fy -= ny * repulsion
         forces[j].fx += nx * repulsion
         forces[j].fy += ny * repulsion
 
-        // Attraction (connected pairs only)
+        // Attraction for connected
         if (isConnected(positions[i].id, positions[j].id)) {
-          const idealDist = 80
-          const attraction = (dist - idealDist) * 0.05
+          const ideal = 90
+          const attraction = (dist - ideal) * 0.04
           forces[i].fx += nx * attraction
           forces[i].fy += ny * attraction
           forces[j].fx -= nx * attraction
           forces[j].fy -= ny * attraction
         }
       }
+
+      // Center gravity (gentle pull toward center)
+      forces[i].fx += (cx - positions[i].x) * 0.005
+      forces[i].fy += (cy - positions[i].y) * 0.005
     }
 
-    // Apply forces with damping
-    const damping = 0.3
-    for (let i = 0; i < count; i++) {
-      positions[i].x += forces[i].fx * damping
-      positions[i].y += forces[i].fy * damping
-      // Clamp to bounds
-      positions[i].x = Math.max(PAD, Math.min(W - PAD, positions[i].x))
-      positions[i].y = Math.max(PAD, Math.min(H - PAD, positions[i].y))
-    }
+    positions = positions.map((p, i) => ({
+      id: p.id,
+      x: Math.max(PAD, Math.min(W - PAD, p.x + forces[i].fx * 0.3)),
+      y: Math.max(PAD, Math.min(H - PAD, p.y + forces[i].fy * 0.3)),
+    }))
   }
 
   return positions
@@ -89,7 +145,6 @@ export function WorldMap() {
 
   const positions = useMemo(
     () => (world ? layoutNodes(world.locations) : []),
-    // Stable key: only relayout when location count/ids change
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [world?.locations.map((l) => l.id).join(',')]
   )
@@ -143,7 +198,7 @@ export function WorldMap() {
       <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 px-2">
         Map
       </h3>
-      <svg viewBox="0 0 380 260" className="w-full" style={{ maxHeight: '200px' }}>
+      <svg viewBox="0 0 380 280" className="w-full" style={{ maxHeight: '220px' }}>
         {/* Edges */}
         {edges.map((e) => {
           const isPlayerPath =
@@ -201,22 +256,18 @@ export function WorldMap() {
               )}
 
               {locked && !isPlayer && (
-                <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={10}>
-                  &#x1F512;
-                </text>
+                <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={10}>&#x1F512;</text>
               )}
 
               {isPlayer && (
-                <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={11}>
-                  &#x1F464;
-                </text>
+                <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={11}>&#x1F464;</text>
               )}
 
               <text
                 x={pos.x}
                 y={pos.y + 24}
                 textAnchor="middle"
-                fill={isPlayer ? '#fbbf24' : isConnected ? '#9ca3af' : '#4b5563'}
+                fill={isPlayer ? '#fbbf24' : isConnected ? '#9ca3af' : '#6b7280'}
                 fontSize={8}
                 fontWeight={isPlayer ? 'bold' : 'normal'}
               >
