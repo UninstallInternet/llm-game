@@ -50,6 +50,19 @@ export function useChat() {
           })
         }
 
+        // Refresh full game state to pick up NPC mood/knowledge changes
+        try {
+          const stateRes = await fetch('/api/game/state')
+          const stateJson = (await stateRes.json()) as ApiResponse<{ world: import('../../shared/types.js').WorldState; player: import('../../shared/types.js').Player }>
+          if (stateJson.success && stateJson.data) {
+            const store = useGameStore.getState()
+            store.setGameState(stateJson.data.world, stateJson.data.player)
+            // Re-set currentNpc from updated world data
+            const updatedNpc = stateJson.data.world.npcs.find((n) => n.id === npcId)
+            if (updatedNpc) store.setCurrentNpc(updatedNpc)
+          }
+        } catch { /* non-critical */ }
+
         return json.data
       } catch (error) {
         console.error('Chat error:', error)
