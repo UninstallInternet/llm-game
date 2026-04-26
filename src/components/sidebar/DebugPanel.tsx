@@ -118,6 +118,42 @@ function DebugEntryCard({ entry }: { entry: DebugEntry }) {
     )
   }
 
+  // NPC actions, plans, results
+  if (entry.type === 'npc_action') {
+    const d = entry.data as Record<string, unknown>
+
+    if (d.plan) {
+      return (
+        <div className="bg-green-900/15 border border-green-800/30 rounded p-2">
+          <div className="text-green-400 font-medium mb-1">Plan: {entry.npcName}</div>
+          <div className="text-gray-400">
+            <span className="text-green-300">{d.plan as string}</span>
+            {' '}[{d.status as string}, {d.steps as number} steps]
+          </div>
+        </div>
+      )
+    }
+
+    if (d.outcome) {
+      const outcomeColor = d.outcome === 'strong_success' ? 'text-green-400' : d.outcome === 'partial_success' ? 'text-yellow-400' : 'text-red-400'
+      return (
+        <div className="bg-gray-800/50 border border-gray-700/30 rounded p-2">
+          <div className="text-gray-300 font-medium mb-1">{entry.npcName}</div>
+          <div className="text-gray-400">
+            <span className={outcomeColor}>[{d.outcome as string}]</span> {d.description as string}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="bg-gray-800/50 border border-gray-700/30 rounded p-2">
+        <div className="text-gray-300 font-medium mb-1">{entry.npcName}</div>
+        <div className="text-gray-400">{d.description as string}</div>
+      </div>
+    )
+  }
+
   return null
 }
 

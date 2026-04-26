@@ -8,6 +8,7 @@ import {
 } from '../game/state.js'
 import { llmCall } from '../llm/client.js'
 import { judgeAction, preCheckAction, searchContainer } from '../llm/judge.js'
+import { generateDiscovery } from './discovery.js'
 import { broadcastEvent } from '../routes/events.js'
 import {
   ACTIVATION_THRESHOLD_LOW,
@@ -336,6 +337,12 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
     turnLearned: world.currentTick,
     isSecret: false,
   }])
+
+  // On strong success of an attempt_objective, trigger discovery
+  if (result.outcome === 'strong_success' && location) {
+    console.log(`[Discovery] ${npc.name} triggers discovery at ${location.name}`)
+    await generateDiscovery(npc, location, step.description, world)
+  }
 
   return { executed: true, description: `${npc.name} ${step.description} — ${result.narrativeHint}` }
 }
