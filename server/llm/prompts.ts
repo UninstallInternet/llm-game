@@ -85,13 +85,15 @@ RULES:
 
 Respond with ONLY a JSON object (no markdown, no code fences):
 {
-  "dialogue": "Mix speech and *actions*. Example: *sets down wrench and wipes hands* \"You're asking about Section C?\" *pauses, studying your face* \"I wouldn't go poking around there if I were you.\"",
+  "dialogue": "Mix speech and *actions*. Example: *sets down wrench* \"Section C?\" *studies your face* \"I wouldn't go there.\"",
   "internal_thought": "What you think but don't say (1 sentence)",
-  "mood_change": { "current": "your current mood", "toward_player_delta": -5 to 5, "reason": "brief reason" } or null,
-  "new_knowledge": [{ "content": "what you learned", "source": "player told me" }] or null,
+  "mood_change": { "current": "your mood now", "toward_player_delta": -5 to 5, "reason": "why" } or null,
+  "new_knowledge": [{ "content": "SUMMARIZE what you learned from this exchange — what the visitor said, asked about, or revealed. Always include at least one entry.", "source": "player told me" }],
   "wants_to_end_conversation": false,
-  "action_after": null or "brief description of what you plan to do after this conversation"
-}`
+  "action_after": null or "what you plan to do after this conversation"
+}
+
+CRITICAL: new_knowledge must ALWAYS have at least one entry summarizing what the visitor said or asked about. This is how you remember the conversation later. Even if they said something mundane, note it: "The visitor asked about the weather" or "They introduced themselves as [name]" or "They were asking about [topic]". Never return null for new_knowledge.`
 }
 
 export function buildConversationMessages(
