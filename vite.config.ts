@@ -10,7 +10,14 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
-        timeout: 120000, // 2 minutes for world generation
+        configure: (proxy) => {
+          proxy.on('proxyReq', (_proxyReq, req) => {
+            // Extend timeout for world generation
+            if (req.url?.includes('/api/game/new')) {
+              _proxyReq.setTimeout(180000)
+            }
+          })
+        },
       },
     },
   },

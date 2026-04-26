@@ -135,13 +135,18 @@ export async function generateWorld(
   let raw: RawWorldData | null = null
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
+      console.log(`[WorldGen] Attempt ${attempt}, prompt length: ${prompt.length} chars`)
       const rawResponse = await llmCall('worldGen', prompt, 'Generate the world now.', true)
+      console.log(`[WorldGen] Got response: ${rawResponse.length} chars`)
       onProgress('parsing', 'Parsing world data...')
       raw = parseJsonResponse(rawResponse) as RawWorldData
+      console.log(`[WorldGen] Parsed: ${raw.npcs?.length ?? 0} NPCs, ${raw.locations?.length ?? 0} locations`)
       break
     } catch (err) {
-      if (attempt === 2) throw new Error(`World generation failed after 2 attempts: ${err instanceof Error ? err.message : 'unknown'}`)
-      onProgress('retrying', `Generation incomplete, retrying (attempt ${attempt + 1})...`)
+      const msg = err instanceof Error ? err.message : 'unknown'
+      console.error(`[WorldGen] Attempt ${attempt} failed: ${msg}`)
+      if (attempt === 2) throw new Error(`World generation failed after 2 attempts: ${msg}`)
+      onProgress('retrying', `Attempt ${attempt} failed (${msg}), retrying...`)
     }
   }
   if (!raw) throw new Error('World generation produced no data')
