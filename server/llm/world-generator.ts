@@ -117,7 +117,21 @@ export async function generateWorld(
     ownerId: loc.ownerId,
   }))
 
-  // Ensure all locations are reachable — connect orphans to first public location
+  // Enforce bidirectional connections: if A -> B, then B -> A
+  const locationIds = new Set(locations.map((l) => l.id))
+  for (const loc of locations) {
+    // Remove connections to non-existent locations
+    loc.connections = loc.connections.filter((c) => locationIds.has(c))
+    // Ensure reverse connections exist
+    for (const connId of loc.connections) {
+      const target = locations.find((l) => l.id === connId)
+      if (target && !target.connections.includes(loc.id)) {
+        target.connections.push(loc.id)
+      }
+    }
+  }
+
+  // Connect orphans (no connections at all) to first public location
   const firstPublicId = locations.find((l) => l.isPublic)?.id ?? locations[0]?.id
   for (const loc of locations) {
     if (loc.connections.length === 0 && firstPublicId && loc.id !== firstPublicId) {

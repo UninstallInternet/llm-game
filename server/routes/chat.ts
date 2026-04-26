@@ -9,6 +9,7 @@ import {
   updateNpcMood,
   addNpcKnowledge,
   isGameActive,
+  persistGame,
 } from '../game/state.js'
 import { v4 as uuid } from 'uuid'
 import { broadcastEvent } from './events.js'
@@ -23,6 +24,11 @@ chatRoutes.post('/', async (req, res) => {
     }
 
     const { npcId, message } = req.body as ChatRequest
+
+    if (!npcId) {
+      res.json({ success: false, error: 'npcId is required' } satisfies ApiResponse<never>)
+      return
+    }
 
     if (!message?.trim()) {
       res.json({ success: false, error: 'Message cannot be empty' } satisfies ApiResponse<never>)
@@ -103,6 +109,9 @@ chatRoutes.post('/', async (req, res) => {
         data: { npcId, description: npcResponse.action_after },
       })
     }
+
+    // Auto-persist after conversation
+    persistGame()
 
     const response: ApiResponse<ChatResponse> = {
       success: true,
