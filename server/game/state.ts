@@ -8,7 +8,15 @@ import type {
   GameTime,
   KnowledgeEntry,
 } from '../../shared/types.js'
-import { TIME_ORDER, MAX_CONVERSATION_HISTORY } from '../../shared/constants.js'
+import {
+  TIME_ORDER,
+  MAX_CONVERSATION_HISTORY,
+  MAX_KNOWLEDGE_PER_NPC,
+  MEMORY_DECAY_RATE,
+  MEMORY_WEIGHT_IMPORTANCE,
+  MEMORY_WEIGHT_RECENCY,
+  TOP_K_MEMORIES,
+} from '../../shared/constants.js'
 import { saveGame, loadGame, saveConversationTurn } from '../db/database.js'
 
 let currentWorld: WorldState | null = null
@@ -112,10 +120,19 @@ export function addNpcKnowledge(npcId: string, entries: KnowledgeEntry[]): void 
   const npc = getNpc(npcId)
   if (!npc) return
 
-  const updated: NPC = {
-    ...npc,
-    knowledge: [...npc.knowledge, ...entries],
+  let knowledge = [...npc.knowledge, ...entries]
+
+  // Trim to max — drop oldest low-importance entries
+  if (knowledge.length > MAX_KNOWLEDGE_PER_NPC) {
+    knowledge.sort((a, b) => {
+      const scoreA = a.importance * Math.pow(MEMORY_DECAY_RATE, (currentWorld!.currentTick - a.turnLearned))
+      const scoreB = b.importance * Math.pow(MEMORY_DECAY_RATE, (currentWorld!.currentTick - b.turnLearned))
+      return scoreB - scoreA
+    })
+    knowledge = knowledge.slice(0, MAX_KNOWLEDGE_PER_NPC)
   }
+
+  const updated: NPC = { ...npc, knowledge }
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
 }
 
@@ -157,4 +174,82 @@ export function loadSavedGame(id: string): boolean {
   currentPlayer = saved.player
   saveId = id
   return true
+}
+
+export function updateNpcMoodGeneral(npcId: string, mood: string, reason: string): void {
+  if (!currentWorld) return
+  const npc = getNpc(npcId)
+  if (!npc) return
+
+  const updated: NPC = {
+    ...npc,
+    mood: {
+      ...npc.mood,
+      current: mood,
+      reasons: [...npc.mood.reasons.slice(-4), reason],
+    },
+  }
+  currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+}
+
+export function updateNpcRelationship(
+  npcId: string,
+  targetNpcId: string,
+  deltas: { trust?: number; affection?: number; respect?: number; fear?: number },
+  memory?: string
+): void {
+  if (!currentWorld) return
+  const npc = getNpc(npcId)
+  if (!npc) return
+
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+  const existing = npc.relationships.find((r) => r.targetNpcId === targetNpcId)
+
+  let updatedRelationships: typeof npc.relationships
+  if (existing) {
+    updatedRelationships = npc.relationships.map((r) =>
+      r.targetNpcId === targetNpcId
+        ? {
+            ...r,
+            trust: clamp(r.trust + (deltas.trust ?? 0), -100, 100),
+            affection: clamp(r.affection + (deltas.affection ?? 0), -100, 100),
+            respect: clamp(r.respect + (deltas.respect ?? 0), -100, 100),
+            fear: clamp(r.fear + (deltas.fear ?? 0), 0, 100),
+            significantMemories: memory
+              ? [...r.significantMemories.slice(-4), memory]
+              : r.significantMemories,
+          }
+        : r
+    )
+  } else {
+    const target = getNpc(targetNpcId)
+    updatedRelationships = [
+      ...npc.relationships,
+      {
+        targetNpcId,
+        type: 'acquaintance' as const,
+        trust: clamp(deltas.trust ?? 0, -100, 100),
+        affection: clamp(deltas.affection ?? 0, -100, 100),
+        respect: clamp(deltas.respect ?? 0, -100, 100),
+        fear: clamp(deltas.fear ?? 0, 0, 100),
+        significantMemories: memory ? [memory] : [`Met ${target?.name ?? 'someone'}`],
+      },
+    ]
+  }
+
+  const updated: NPC = { ...npc, relationships: updatedRelationships }
+  currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+}
+
+export function getTopMemories(npc: NPC, currentTick: number): KnowledgeEntry[] {
+  return [...npc.knowledge]
+    .map((k) => ({
+      entry: k,
+      score:
+        k.importance * MEMORY_WEIGHT_IMPORTANCE +
+        Math.pow(MEMORY_DECAY_RATE, currentTick - k.turnLearned) * MEMORY_WEIGHT_RECENCY,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, TOP_K_MEMORIES)
+    .map((s) => s.entry)
 }

@@ -1,6 +1,6 @@
 import type { TimeOfDay } from './types.js'
 
-export const TICK_INTERVAL_MS = 30_000 // 30 seconds real time = 1 time period
+export const TICK_INTERVAL_MS = 30_000
 
 export const TIME_ORDER: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night']
 
@@ -15,9 +15,9 @@ export const NPC_DISPOSITION_THRESHOLDS = {
   trusted: 80,
 } as const
 
-export const INFO_SHARE_PROBABILITY = 0.3 // chance NPCs share info when co-located
+export const INFO_SHARE_PROBABILITY = 0.3
 export const MAX_KNOWLEDGE_PER_NPC = 50
-export const KNOWLEDGE_RELEVANCE_WINDOW = 20 // ticks
+export const KNOWLEDGE_RELEVANCE_WINDOW = 20
 
 export const LLM_MODELS = {
   worldGen: 'gpt-4o-mini',
@@ -25,5 +25,15 @@ export const LLM_MODELS = {
   simulation: 'gpt-4o-mini',
 } as const
 
-export const MAX_CONVERSATION_HISTORY = 20 // turns kept per NPC
-export const MAX_SIMULATION_LLM_CALLS_PER_TICK = 3
+export const MAX_CONVERSATION_HISTORY = 20
+export const MAX_SIMULATION_LLM_CALLS_PER_TICK = 5
+
+// ─── NPC Conversation Config ───
+export const MAX_NPC_CONVERSATIONS_PER_TICK = 2
+export const MIN_CONVERSATION_SCORE = 0.15
+export const MEMORY_DECAY_RATE = 0.95 // per tick
+
+// ─── Memory Retrieval Weights (Stanford formula) ───
+export const MEMORY_WEIGHT_IMPORTANCE = 2.0
+export const MEMORY_WEIGHT_RECENCY = 0.5
+export const TOP_K_MEMORIES = 5

@@ -58,6 +58,7 @@ export function propagateInfo(): InfoShare[] {
           content: toShare.content,
           source: `heard from ${speaker.name}`,
           confidence: Math.max(0.2, toShare.confidence - 0.1),
+          importance: Math.max(0.2, toShare.importance - 0.1),
           turnLearned: world.currentTick,
           isSecret: false,
         }

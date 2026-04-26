@@ -1,5 +1,6 @@
-import type { NPC, WorldState, ConversationTurn } from '../../shared/types.js'
+import type { NPC, WorldState, ConversationTurn, KnowledgeEntry } from '../../shared/types.js'
 import { NPC_DISPOSITION_THRESHOLDS } from '../../shared/constants.js'
+import { getTopMemories } from '../game/state.js'
 
 function dispositionLabel(value: number): string {
   if (value <= NPC_DISPOSITION_THRESHOLDS.hostile) return 'hostile'
@@ -9,24 +10,40 @@ function dispositionLabel(value: number): string {
   return 'very trusting'
 }
 
+function formatRelationship(npc: NPC, targetName: string, rel: NPC['relationships'][0]): string {
+  const feeling = rel.affection > 20 ? 'likes' : rel.affection < -20 ? 'dislikes' : 'neutral toward'
+  const trust = rel.trust > 30 ? 'trusts' : rel.trust < -30 ? 'distrusts' : ''
+  const fear = rel.fear > 40 ? ', fears' : ''
+  const memories = rel.significantMemories.length > 0
+    ? ` (${rel.significantMemories.slice(-2).join('; ')})`
+    : ''
+  return `- ${targetName} (${rel.type}): ${feeling}${trust ? ', ' + trust : ''}${fear}${memories}`
+}
+
+function formatKnowledge(entries: KnowledgeEntry[]): string {
+  return entries
+    .map((k) => `- ${k.content} (${k.source})`)
+    .join('\n')
+}
+
 export function buildNpcSystemPrompt(npc: NPC, world: WorldState): string {
   const recentEvents = world.events
     .filter((e) => !e.resolved && e.triggerDay <= world.time.day)
+    .slice(0, 3)
     .map((e) => `- ${e.title}: ${e.description}`)
     .join('\n')
 
-  const relationships = npc.relationships
+  const topRelationships = npc.relationships
+    .slice(0, 5)
     .map((r) => {
       const target = world.npcs.find((n) => n.id === r.targetNpcId)
-      return target ? `- ${target.name} (${r.type}, ${r.strength > 0 ? 'positive' : 'tense'}): ${r.notes}` : null
+      return target ? formatRelationship(npc, target.name, r) : null
     })
     .filter(Boolean)
     .join('\n')
 
-  const recentKnowledge = npc.knowledge
-    .slice(-10)
-    .map((k) => `- ${k.content} (${k.source}, confidence: ${Math.round(k.confidence * 100)}%)`)
-    .join('\n')
+  const topMemories = getTopMemories(npc, world.currentTick)
+  const knowledgeStr = formatKnowledge(topMemories)
 
   return `You are ${npc.name}, a ${npc.age}-year-old ${npc.occupation} in ${world.name}.
 Setting: ${world.settingDescription}
@@ -42,10 +59,10 @@ YOUR SECRETS (never reveal directly, deflect if topics get close):
 ${npc.secrets.map((s) => `- ${s}`).join('\n')}
 
 RELATIONSHIPS:
-${relationships || '- None yet'}
+${topRelationships || '- None yet'}
 
 THINGS YOU KNOW:
-${recentKnowledge || '- Nothing notable'}
+${knowledgeStr || '- Nothing notable'}
 
 CURRENT MOOD: ${npc.mood.current}
 FEELINGS TOWARD THIS STRANGER/VISITOR: ${dispositionLabel(npc.mood.toward_player)} (${npc.mood.toward_player}/100)
@@ -85,13 +102,11 @@ export function buildConversationMessages(
     { role: 'system', content: systemPrompt },
   ]
 
-  // Add conversation history (last 12 turns for good context)
   const recentHistory = history.slice(-12)
   for (const turn of recentHistory) {
     if (turn.role === 'player') {
       messages.push({ role: 'user', content: turn.content })
     } else {
-      // Extract just dialogue from NPC response if it was stored as JSON
       messages.push({ role: 'assistant', content: turn.content })
     }
   }
@@ -100,6 +115,90 @@ export function buildConversationMessages(
 
   return messages
 }
+
+// ─── NPC-to-NPC Conversation Prompt ───
+
+export function buildNpcConversationPrompt(
+  npc1: NPC,
+  npc2: NPC,
+  world: WorldState
+): { system: string; user: string } {
+  const location = world.locations.find((l) => l.id === npc1.currentLocationId)
+  const rel1to2 = npc1.relationships.find((r) => r.targetNpcId === npc2.id)
+  const rel2to1 = npc2.relationships.find((r) => r.targetNpcId === npc1.id)
+
+  const k1 = getTopMemories(npc1, world.currentTick)
+    .filter((k) => !k.isSecret)
+    .slice(0, 5)
+    .map((k) => k.content)
+    .join('; ')
+
+  const k2 = getTopMemories(npc2, world.currentTick)
+    .filter((k) => !k.isSecret)
+    .slice(0, 5)
+    .map((k) => k.content)
+    .join('; ')
+
+  const relevantEvents = world.events
+    .filter((e) => !e.resolved && e.triggerDay <= world.time.day)
+    .filter(
+      (e) => e.involvedNpcIds.includes(npc1.id) || e.involvedNpcIds.includes(npc2.id)
+    )
+    .map((e) => e.title)
+    .join(', ')
+
+  const system = `You simulate NPC-to-NPC conversations in a text adventure. Generate a brief, natural exchange between two characters. Both act according to their personality, goals, and knowledge. They may share info, argue, gossip, scheme, or just chat — driven by who they are.
+
+RULES:
+- 2-4 dialogue turns total. Keep it SHORT and natural.
+- Characters never reveal secret goals directly, but those goals color their words.
+- If one knows something the other doesn't, they may share it (or strategically withhold it).
+- Secret knowledge stays secret unless trust is very high.
+- Respond ONLY with JSON (no markdown, no fences).`
+
+  const formatRel = (rel: typeof rel1to2, otherName: string) => {
+    if (!rel) return `Has no established relationship with ${otherName}.`
+    const feel = rel.affection > 20 ? 'likes' : rel.affection < -20 ? 'dislikes' : 'neutral toward'
+    const trust = rel.trust > 30 ? ', trusts' : rel.trust < -30 ? ', distrusts' : ''
+    return `Feels about ${otherName}: ${rel.type}, ${feel}${trust}. ${rel.significantMemories.slice(-1).join('')}`
+  }
+
+  const user = `Location: ${location?.name ?? 'unknown'} (${world.time.timeOfDay}, Day ${world.time.day})
+${relevantEvents ? `Current events: ${relevantEvents}` : ''}
+
+NPC_1: ${npc1.name}, ${npc1.occupation}, mood: ${npc1.mood.current}
+Personality: ${npc1.personality.traits.join(', ')}. ${npc1.personality.speechStyle}.
+Goal: ${npc1.goals.public} (secret: ${npc1.goals.secret})
+Knows: ${k1 || 'nothing notable'}
+${formatRel(rel1to2, npc2.name)}
+
+NPC_2: ${npc2.name}, ${npc2.occupation}, mood: ${npc2.mood.current}
+Personality: ${npc2.personality.traits.join(', ')}. ${npc2.personality.speechStyle}.
+Goal: ${npc2.goals.public} (secret: ${npc2.goals.secret})
+Knows: ${k2 || 'nothing notable'}
+${formatRel(rel2to1, npc1.name)}
+
+Generate their conversation. JSON format:
+{
+  "summary": "1-2 sentence description of what happened (player-visible)",
+  "npc1_takeaway": {
+    "knowledge": "what ${npc1.name} learned or reinforced (1 sentence)",
+    "mood_shift": "new mood" or null,
+    "relationship_delta": -10 to 10,
+    "internal_reaction": "private thought (1 sentence)"
+  },
+  "npc2_takeaway": {
+    "knowledge": "what ${npc2.name} learned or reinforced (1 sentence)",
+    "mood_shift": "new mood" or null,
+    "relationship_delta": -10 to 10,
+    "internal_reaction": "private thought (1 sentence)"
+  }
+}`
+
+  return { system, user }
+}
+
+// ─── World Generation Prompt ───
 
 export function buildWorldGenPrompt(
   settingDescription: string,
@@ -121,6 +220,7 @@ REQUIREMENTS:
 - Each NPC needs 1-2 secrets
 - Locations should be connected logically (tavern connects to town square, etc.)
 - One location should be a natural starting point (town entrance, dock, etc.)
+- Each relationship must have: targetNpcId, type, trust (-100 to 100), affection (-100 to 100), respect (-100 to 100), fear (0 to 100), significantMemories (array of strings)
 
 Respond with ONLY a JSON object (no markdown, no code fences) matching this structure:
 {
@@ -163,7 +263,7 @@ Respond with ONLY a JSON object (no markdown, no code fences) matching this stru
       },
       "secrets": ["secret 1"],
       "relationships": [
-        { "targetNpcId": "npc_2", "type": "friend", "strength": 60, "notes": "why" }
+        { "targetNpcId": "npc_2", "type": "friend", "trust": 60, "affection": 50, "respect": 40, "fear": 0, "significantMemories": ["grew up together"] }
       ],
       "factionId": "faction_1" or null,
       "scheduleLocationIds": {

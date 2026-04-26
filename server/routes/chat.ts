@@ -96,6 +96,7 @@ chatRoutes.post('/', async (req, res) => {
         content: k.content,
         source: k.source,
         confidence: 0.9,
+        importance: 0.7,
         turnLearned: world.currentTick,
         isSecret: false,
       }))

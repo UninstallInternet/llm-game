@@ -3,8 +3,11 @@
 export interface Relationship {
   targetNpcId: string
   type: 'friend' | 'rival' | 'spouse' | 'family' | 'employer' | 'employee' | 'acquaintance' | 'enemy'
-  strength: number // -100 to 100
-  notes: string
+  trust: number      // -100 to 100
+  affection: number  // -100 to 100
+  respect: number    // -100 to 100
+  fear: number       // 0 to 100
+  significantMemories: string[]
 }
 
 export interface KnowledgeEntry {
@@ -12,8 +15,28 @@ export interface KnowledgeEntry {
   content: string
   source: string // "witnessed" | "heard from X" | "rumor"
   confidence: number // 0.0 to 1.0
+  importance: number // 0.0 to 1.0 — how significant is this memory
   turnLearned: number
   isSecret: boolean
+}
+
+// ─── NPC Conversation Types ───
+
+export interface NpcTakeaway {
+  knowledge: string
+  moodShift: string | null
+  relationshipDelta: number // -10 to +10
+  internalReaction: string
+}
+
+export interface NpcConversationResult {
+  npc1Id: string
+  npc2Id: string
+  locationId: string
+  tick: number
+  summary: string
+  npc1Takeaway: NpcTakeaway
+  npc2Takeaway: NpcTakeaway
 }
 
 export interface ScheduleEntry {
@@ -200,5 +223,6 @@ export type GameEvent =
   | { type: 'event_triggered'; data: WorldEvent }
   | { type: 'info_shared'; data: { fromNpcId: string; toNpcId: string; summary: string } }
   | { type: 'npc_action'; data: { npcId: string; description: string } }
+  | { type: 'npc_conversation'; data: { npc1Id: string; npc2Id: string; locationId: string; summary: string } }
   | { type: 'world_generated'; data: { phase: string; message: string } }
   | { type: 'simulation_tick'; data: { tick: number; time: GameTime } }

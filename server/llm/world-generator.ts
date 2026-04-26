@@ -46,8 +46,13 @@ interface RawWorldData {
     relationships: Array<{
       targetNpcId: string
       type: string
-      strength: number
-      notes: string
+      trust?: number
+      affection?: number
+      respect?: number
+      fear?: number
+      strength?: number
+      significantMemories?: string[]
+      notes?: string
     }>
     factionId: string | null
     scheduleLocationIds: Record<string, string>
@@ -181,10 +186,19 @@ export async function generateWorld(
       appearance: n.appearance,
       goals: n.goals,
       secrets: n.secrets,
-      relationships: n.relationships.map((r) => ({
-        ...r,
-        type: r.type as NPC['relationships'][0]['type'],
-      })),
+      relationships: n.relationships.map((r) => {
+        // Handle both old format (strength/notes) and new format (trust/affection/respect/fear)
+        const strength = r.strength ?? 0
+        return {
+          targetNpcId: r.targetNpcId,
+          type: r.type as NPC['relationships'][0]['type'],
+          trust: r.trust ?? strength,
+          affection: r.affection ?? Math.round(strength * 0.8),
+          respect: r.respect ?? Math.round(Math.abs(strength) * 0.5),
+          fear: r.fear ?? 0,
+          significantMemories: r.significantMemories ?? (r.notes ? [r.notes] : []),
+        }
+      }),
       knowledge: [],
       mood: {
         current: 'neutral',
@@ -249,9 +263,10 @@ export async function generateWorld(
       if (target) {
         initialKnowledge.push({
           id: uuid(),
-          content: `${target.name} is my ${rel.type}. ${rel.notes}`,
+          content: `${target.name} is my ${rel.type}. ${rel.significantMemories?.[0] ?? ''}`,
           source: 'personal experience',
           confidence: 1.0,
+          importance: 0.7,
           turnLearned: 0,
           isSecret: false,
         })
@@ -267,6 +282,7 @@ export async function generateWorld(
           content: `I am part of ${faction.name}. ${faction.description}`,
           source: 'personal experience',
           confidence: 1.0,
+          importance: 0.8,
           turnLearned: 0,
           isSecret: false,
         })

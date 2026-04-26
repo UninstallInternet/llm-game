@@ -144,6 +144,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
         break
       }
+      case 'npc_conversation': {
+        const convData = event.data as { npc1Id: string; npc2Id: string; locationId: string; summary: string }
+        const cn1 = state.world?.npcs.find((n) => n.id === convData.npc1Id)
+        const cn2 = state.world?.npcs.find((n) => n.id === convData.npc2Id)
+        if (cn1 && cn2 && convData.locationId === state.player?.currentLocationId) {
+          state.addEventLog(`${cn1.name} and ${cn2.name} are talking. ${convData.summary}`)
+        }
+        break
+      }
       case 'npc_action': {
         const actingNpc = state.world?.npcs.find((n) => n.id === event.data.npcId)
         if (actingNpc) {

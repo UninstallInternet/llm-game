@@ -8,11 +8,12 @@ import { broadcastEvent } from '../routes/events.js'
 import { moveNpcsToSchedule } from './npc-behavior.js'
 import { propagateInfo } from './info-share.js'
 import { checkEventTriggers } from './events.js'
+import { runNpcConversations } from './npc-conversations.js'
 
 let actionCount = 0
-const ACTIONS_PER_TICK = 3 // every 3 player actions = 1 time period
+let tickInProgress = false
+const ACTIONS_PER_TICK = 3
 
-// Called by startSimulation/stopSimulation for compatibility, but no interval
 export function startSimulation(): void {
   actionCount = 0
 }
@@ -21,22 +22,21 @@ export function stopSimulation(): void {
   actionCount = 0
 }
 
-/**
- * Called after each player action (chat, move).
- * Every ACTIONS_PER_TICK actions, the world advances one time period.
- */
 export function onPlayerAction(): void {
   if (!isGameActive()) return
 
   actionCount++
 
-  if (actionCount >= ACTIONS_PER_TICK) {
+  if (actionCount >= ACTIONS_PER_TICK && !tickInProgress) {
     actionCount = 0
-    runTick()
+    void runTick()
   }
 }
 
-function runTick(): void {
+async function runTick(): Promise<void> {
+  if (tickInProgress) return
+  tickInProgress = true
+
   try {
     // 1. Advance time
     const newTime = advanceTime()
@@ -48,30 +48,35 @@ function runTick(): void {
       broadcastEvent({ type: 'npc_moved', data: move })
     }
 
-    // 3. Share information between co-located NPCs (no mutation)
+    // 3. Silent info propagation
     const shares = propagateInfo()
     for (const share of shares) {
       broadcastEvent({ type: 'info_shared', data: share })
     }
 
-    // 4. Check for event triggers
+    // 4. NPC-to-NPC conversations (async, 1-2 LLM calls)
+    await runNpcConversations()
+
+    // 5. Check for event triggers
     const triggered = checkEventTriggers()
     for (const event of triggered) {
       broadcastEvent({ type: 'event_triggered', data: event })
     }
 
-    // 5. Broadcast tick
+    // 6. Broadcast tick
     const world = getWorld()
     broadcastEvent({
       type: 'simulation_tick',
       data: { tick: world.currentTick, time: newTime },
     })
 
-    // Auto-save every full day (4 ticks)
+    // Auto-save every full day
     if (world.currentTick % 4 === 0) {
       persistGame()
     }
   } catch (error) {
     console.error('Simulation tick error:', error)
+  } finally {
+    tickInProgress = false
   }
 }
