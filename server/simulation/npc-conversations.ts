@@ -98,7 +98,8 @@ function findConversationReasons(world: WorldState): ConversationReason[] {
 
       if (npcTargetsOther || otherTargetsNpc) {
         const initiator = npcTargetsOther ? npc : other
-        const step = initiator.activePlan!.steps.find((s) => s.status === 'active')!
+        const step = initiator.activePlan!.steps.find((s) => s.status === 'active' || s.status === 'pending')
+        if (!step) continue // safety check
         reasons.push({
           participants: [npc, other],
           reason: `${initiator.name} needs to talk to ${initiator === npc ? other.name : npc.name} about: ${step.description}`,
@@ -189,6 +190,9 @@ function findConversationReasons(world: WorldState): ConversationReason[] {
 
 function selectConversationGroups(world: WorldState): NPC[][] {
   const reasons = findConversationReasons(world)
+  if (reasons.length > 0) {
+    console.log(`[Convo] ${reasons.length} reasons found: ${reasons.map(r => r.reason.slice(0, 40)).join(' | ')}`)
+  }
   const selected: NPC[][] = []
   const usedIds = new Set<string>()
 
