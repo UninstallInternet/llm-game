@@ -346,7 +346,7 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
       for (const d of parsed.dialogue ?? []) conv.history.push(d)
 
       const names = participants.map((p) => p.name).join(', ')
-      const roundSummary = (parsed.dialogue ?? []).map((d) => `${d.speaker}: ${d.says.slice(0, 60)}`).join(' | ')
+      const roundSummary = (parsed.dialogue ?? []).map((d) => `${d.speaker}: ${d.says}`).join(' | ')
       broadcastEvent({
         type: 'npc_conversation',
         data: {
@@ -410,7 +410,7 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
 
     const dialogueHistory = parsed.dialogue ?? []
     const names = group.map((n) => n.name).join(', ')
-    const roundSummary = dialogueHistory.map((d) => `${d.speaker}: ${d.says.slice(0, 60)}`).join(' | ')
+    const roundSummary = dialogueHistory.map((d) => `${d.speaker}: ${d.says}`).join(' | ')
 
     broadcastEvent({
       type: 'npc_conversation',
