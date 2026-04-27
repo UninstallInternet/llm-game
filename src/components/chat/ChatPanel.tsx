@@ -141,6 +141,38 @@ export function ChatPanel() {
         </div>
       )}
 
+      {/* NPC Approach Notification */}
+      {!isConversing && useGameStore.getState().pendingApproach && (() => {
+        const approach = useGameStore.getState().pendingApproach!
+        return (
+          <div className="px-4 py-3 bg-amber-900/30 border-b border-amber-700/50 flex items-center justify-between shrink-0">
+            <div className="text-sm">
+              <span className="text-amber-400 font-medium">{approach.npcName}</span>
+              <span className="text-gray-300"> approaches you: </span>
+              <span className="text-gray-400 italic">&quot;{approach.reason}&quot;</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const npc = world?.npcs.find((n) => n.id === approach.npcId)
+                  if (npc) useGameStore.getState().setCurrentNpc(npc)
+                  useGameStore.setState({ pendingApproach: null })
+                }}
+                className="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-500 rounded font-medium transition-colors"
+              >
+                Talk
+              </button>
+              <button
+                onClick={() => useGameStore.setState({ pendingApproach: null })}
+                className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+              >
+                Ignore
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Context header — always shows where you are + what you're doing */}
       <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex items-center justify-between shrink-0">
         {isConversing ? (

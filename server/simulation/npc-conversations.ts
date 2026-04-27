@@ -7,6 +7,7 @@ import {
   updateNpcMoodGeneral,
   addNpcAgreement,
   transferItem,
+  updateNpcPlan,
   isNpcBusy,
   markNpcBusy,
   markNpcFree,
@@ -264,6 +265,29 @@ function applyConversationResult(result: NpcConversationResult, world: WorldStat
       const fromNpc = [npc1, npc2].find((n) => n.name.toLowerCase().includes(from.toLowerCase()) || from.toLowerCase().includes(n.name.split(' ')[0].toLowerCase()))
       const toNpc = [npc1, npc2].find((n) => n.name.toLowerCase().includes(to.toLowerCase()) || to.toLowerCase().includes(n.name.split(' ')[0].toLowerCase()))
       if (fromNpc && toNpc) transferItem(fromNpc.id, toNpc.id, item)
+    }
+  }
+
+  // Mark plan steps targeting the other NPC as completed (conversation fulfilled them)
+  for (const npc of [npc1, npc2]) {
+    const other = npc === npc1 ? npc2 : npc1
+    if (npc.activePlan?.status === 'active') {
+      for (const step of npc.activePlan.steps) {
+        if (step.status !== 'active') continue
+        const firstName = other.name.split(' ')[0].toLowerCase()
+        if (step.target.toLowerCase().includes(firstName) || step.description.toLowerCase().includes(firstName)) {
+          step.status = 'completed'
+          step.result = `Talked with ${other.name}: ${result.summary.slice(0, 60)}`
+          console.log(`[Plan Step Done] ${npc.name}: "${step.description.slice(0, 40)}" via conversation`)
+        }
+      }
+      // Advance to next step
+      const next = npc.activePlan.steps.find((s) => s.status === 'pending')
+      if (next) next.status = 'active'
+      else if (npc.activePlan.steps.every((s) => s.status === 'completed' || s.status === 'failed' || s.status === 'skipped')) {
+        npc.activePlan.status = 'completed'
+      }
+      updateNpcPlan(npc.id, npc.activePlan)
     }
   }
 }

@@ -434,13 +434,17 @@ export function addNpcAgreement(
   const npc = getNpc(npcId)
   if (!npc) return
 
-  // Dedup: if same withId + similar content exists, update tick instead of duplicating
+  // Dedup: if same withId + similar content exists, update instead of duplicating
+  const contentWords = new Set(content.toLowerCase().split(/\s+/).filter((w) => w.length > 3))
   const existing = (npc.agreements ?? []).find(
-    (a) => a.withId === withId && a.active && (
-      a.content.toLowerCase() === content.toLowerCase() ||
-      a.content.toLowerCase().includes(content.toLowerCase().slice(0, 30)) ||
-      content.toLowerCase().includes(a.content.toLowerCase().slice(0, 30))
-    )
+    (a) => {
+      if (a.withId !== withId || !a.active) return false
+      if (a.content.toLowerCase() === content.toLowerCase()) return true
+      // Keyword overlap check
+      const existingWords = a.content.toLowerCase().split(/\s+/).filter((w) => w.length > 3)
+      const overlap = existingWords.filter((w) => contentWords.has(w)).length
+      return overlap >= 3 || (existingWords.length > 0 && overlap / existingWords.length > 0.5)
+    }
   )
   if (existing) {
     // Update existing agreement with newer version (longer = more refined)

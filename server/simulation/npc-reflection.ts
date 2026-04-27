@@ -137,10 +137,10 @@ Respond with ONLY JSON:
   // Approach player
   if (result.approach_player && playerHere) {
     broadcastEvent({
-      type: 'npc_action' as const,
+      type: 'npc_approaches' as string as 'npc_action',
       data: {
         npcId: npc.id,
-        description: `${npc.name} approaches you. "${result.approach_reason ?? 'They want to talk.'}"`,
+        description: result.approach_reason ?? `${npc.name} wants to talk to you.`,
       },
     })
   }

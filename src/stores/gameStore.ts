@@ -25,6 +25,7 @@ interface GameStore {
   currentNpc: NPC | null
   chatLoading: boolean
   eventLog: Array<{ timestamp: number; message: string }>
+  pendingApproach: { npcId: string; npcName: string; reason: string } | null
   debugLog: DebugEntry[]
   showDebug: boolean
   lastChatDebug: (DebugReasoning & { npcName: string }) | null
@@ -55,6 +56,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   currentNpc: null,
   chatLoading: false,
   eventLog: [],
+  pendingApproach: null,
   debugLog: [],
   showDebug: false,
   lastChatDebug: null,
@@ -238,8 +240,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       case 'world_generated':
         state.addGenerationMessage(event.data.message)
         break
-      default:
+      default: {
+        // Handle npc_approaches (sent as untyped event)
+        const anyEvent = event as { type: string; data: { npcId?: string; description?: string } }
+        if (anyEvent.type === 'npc_approaches' && anyEvent.data.npcId) {
+          const approachNpc = state.world?.npcs.find((n) => n.id === anyEvent.data.npcId)
+          if (approachNpc && approachNpc.currentLocationId === state.player?.currentLocationId) {
+            set({
+              pendingApproach: {
+                npcId: approachNpc.id,
+                npcName: approachNpc.name,
+                reason: anyEvent.data.description ?? 'wants to talk',
+              },
+            })
+            state.addEventLog(`${approachNpc.name} approaches you.`)
+          }
+        }
         break
+      }
     }
   },
 }))
