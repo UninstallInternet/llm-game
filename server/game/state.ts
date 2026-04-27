@@ -447,11 +447,15 @@ export function addNpcAgreement(
     }
   )
   if (existing) {
-    // Update existing agreement with newer version (longer = more refined)
-    existing.content = content.length > existing.content.length ? content : existing.content
-    existing.madeAtTick = tick
-    const updated: NPC = { ...npc, agreements: [...(npc.agreements ?? [])] }
-    currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+    // Update existing agreement immutably
+    const updatedAgreements = (npc.agreements ?? []).map((a) =>
+      a === existing
+        ? { ...a, content: content.length > a.content.length ? content : a.content, madeAtTick: tick }
+        : a
+    )
+    currentWorld.npcs = currentWorld.npcs.map((n) =>
+      n.id === npcId ? { ...n, agreements: updatedAgreements } : n
+    )
     return
   }
 
@@ -481,8 +485,12 @@ export function completeAgreement(npcId: string, agreementContent: string): void
     (a) => a.active && a.content.toLowerCase().includes(agreementContent.toLowerCase().slice(0, 20))
   )
   if (agreement) {
-    agreement.active = false
-    currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? { ...npc } : n))
+    const updatedAgreements = (npc.agreements ?? []).map((a) =>
+      a === agreement ? { ...a, active: false } : a
+    )
+    currentWorld.npcs = currentWorld.npcs.map((n) =>
+      n.id === npcId ? { ...n, agreements: updatedAgreements } : n
+    )
   }
 }
 
@@ -501,23 +509,28 @@ export function transferItem(fromId: string, toId: string, itemName: string): bo
   )
   if (itemIdx === -1) return false
 
-  const item = fromInventory.splice(itemIdx, 1)[0]
-  item.ownerId = toId
+  const item = { ...fromInventory[itemIdx], ownerId: toId }
+  const newFromInventory = fromInventory.filter((_, i) => i !== itemIdx)
 
-  // Add to target
+  // Update source inventory immutably
+  if (fromId === 'player' && currentPlayer) {
+    currentPlayer = { ...currentPlayer, inventory: newFromInventory }
+  } else if (fromNpc) {
+    currentWorld.npcs = currentWorld.npcs.map((n) =>
+      n.id === fromId ? { ...n, inventory: newFromInventory } : n
+    )
+  }
+
+  // Add to target inventory immutably
   if (toId === 'player' && currentPlayer) {
-    currentPlayer.inventory.push(item)
+    currentPlayer = { ...currentPlayer, inventory: [...currentPlayer.inventory, item] }
   } else {
     const toNpc = getNpc(toId)
     if (toNpc) {
-      toNpc.inventory.push(item)
-      currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === toId ? { ...toNpc } : n))
+      currentWorld.npcs = currentWorld.npcs.map((n) =>
+        n.id === toId ? { ...n, inventory: [...n.inventory, item] } : n
+      )
     }
-  }
-
-  // Update source
-  if (fromId !== 'player' && fromNpc) {
-    currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === fromId ? { ...fromNpc } : n))
   }
 
   return true
@@ -531,7 +544,7 @@ export function consumeItem(ownerId: string, itemName: string): boolean {
       i.name.toLowerCase().includes(itemName.toLowerCase())
     )
     if (idx === -1) return false
-    currentPlayer.inventory.splice(idx, 1)
+    currentPlayer = { ...currentPlayer, inventory: currentPlayer.inventory.filter((_, i) => i !== idx) }
     return true
   }
 
@@ -542,8 +555,9 @@ export function consumeItem(ownerId: string, itemName: string): boolean {
     i.name.toLowerCase().includes(itemName.toLowerCase())
   )
   if (idx === -1) return false
-  npc.inventory.splice(idx, 1)
-  currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === ownerId ? { ...npc } : n))
+  currentWorld.npcs = currentWorld.npcs.map((n) =>
+    n.id === ownerId ? { ...n, inventory: n.inventory.filter((_, i2) => i2 !== idx) } : n
+  )
   return true
 }
 
@@ -560,17 +574,26 @@ export function dropItemAtLocation(ownerId: string, itemName: string): boolean {
   )
   if (idx === -1) return false
 
-  const item = inventory.splice(idx, 1)[0]
+  const item = { ...inventory[idx], locationId: '', ownerId: null as string | null }
+  const newInventory = inventory.filter((_, i) => i !== idx)
   const locationId = ownerId === 'player'
     ? currentPlayer?.currentLocationId
     : npc?.currentLocationId
 
+  // Update owner inventory immutably
+  if (ownerId === 'player' && currentPlayer) {
+    currentPlayer = { ...currentPlayer, inventory: newInventory }
+  } else if (npc) {
+    currentWorld.npcs = currentWorld.npcs.map((n) =>
+      n.id === ownerId ? { ...n, inventory: newInventory } : n
+    )
+  }
+
   if (locationId) {
+    item.locationId = locationId
     const loc = currentWorld.locations.find((l) => l.id === locationId)
     if (loc) {
-      item.locationId = locationId
-      item.ownerId = null
-      loc.items.push(item)
+      loc.items = [...loc.items, item]
     }
   }
 

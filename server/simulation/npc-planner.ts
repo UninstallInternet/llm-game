@@ -299,25 +299,37 @@ export async function executeCurrentStep(
         .some((a) => currentStep.action.toLowerCase().includes(a) || descLower.includes(a))
 
       if (targetNpcForStep && targetNpcForStep.currentLocationId === npc.currentLocationId && isSocialAction) {
-        // DON'T complete the step — keep it active so conversation pairing picks it up
-        // The plan-aware conversation system will force-pair these two NPCs next tick
-        // Store high-importance knowledge so conversation prompt has the full context
-        addNpcKnowledge(npc.id, [{
-          id: uuid(),
-          content: `I am right here with ${targetNpcForStep.name} and need to talk to them about: ${currentStep.description}. This is urgent — part of my plan: ${npc.activePlan?.goal ?? 'unknown'}.`,
-          source: 'self — plan execution',
-          confidence: 1.0,
-          importance: 1.0,
-          turnLearned: world.currentTick,
-          isSecret: true,
-        }])
+        // Check if we've been trying this for too long (max 3 attempts)
+        const attempts = (currentStep.result?.match(/attempt (\d+)/)?.[1] ?? '0')
+        const attemptCount = parseInt(attempts, 10)
 
+        if (attemptCount >= 3) {
+          // Give up after 3 tries — complete with partial result
+          currentStep.status = 'completed'
+          currentStep.result = `Tried to talk to ${targetNpcForStep.name} but could not reach agreement`
+          result = { executed: true, description: `${npc.name} gives up trying to convince ${targetNpcForStep.name}` }
+          break
+        }
+
+        // Only add knowledge on first attempt to avoid flooding
+        if (attemptCount === 0) {
+          addNpcKnowledge(npc.id, [{
+            id: uuid(),
+            content: `I need to talk to ${targetNpcForStep.name} about: ${currentStep.description}. Part of my plan: ${npc.activePlan?.goal ?? 'unknown'}.`,
+            source: 'self — plan execution',
+            confidence: 1.0,
+            importance: 1.0,
+            turnLearned: world.currentTick,
+            isSecret: true,
+          }])
+        }
+
+        currentStep.result = `attempt ${attemptCount + 1} — waiting for conversation`
         result = { executed: true, description: `${npc.name} is ready to approach ${targetNpcForStep.name}` }
         broadcastEvent({
           type: 'npc_action',
           data: { npcId: npc.id, description: `${npc.name} prepares to approach ${targetNpcForStep.name}` },
         })
-        // Step stays active — conversation system handles the rest
         break
       }
 

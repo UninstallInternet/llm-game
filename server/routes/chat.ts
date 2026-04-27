@@ -170,8 +170,7 @@ chatRoutes.post('/', async (req, res) => {
       }])
     }
 
-    // Advance simulation and persist
-    onPlayerAction()
+    // Persist FIRST, then respond, then trigger tick (avoids race condition)
     persistGame()
 
     const response: ApiResponse<ChatResponse> = {
@@ -194,6 +193,9 @@ chatRoutes.post('/', async (req, res) => {
       },
     }
     res.json(response)
+
+    // Trigger tick AFTER response is sent (no race with state writes)
+    onPlayerAction()
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     res.status(500).json({ success: false, error: message } satisfies ApiResponse<never>)
