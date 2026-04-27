@@ -119,7 +119,7 @@ chatRoutes.post('/', async (req, res) => {
 
       // Convert action_after into an immediate plan so the NPC actually does it
       const freshNpcForPlan = getNpc(npcId)
-      if (freshNpcForPlan && !freshNpcForPlan.activePlan) {
+      if (freshNpcForPlan && (!freshNpcForPlan.activePlan || freshNpcForPlan.activePlan.status !== 'active')) {
         const { updateNpcPlan } = await import('../game/state.js')
         updateNpcPlan(npcId, {
           id: uuid(),
