@@ -27,8 +27,8 @@ import type { NPC, WorldState, NpcPlan, PlanStep, Item } from '../../shared/type
 export function calculateActivation(npc: NPC, world: WorldState): number {
   let activation = 0
 
-  // Has unmet goals? (secret goal always drives action)
-  if (npc.goals.secret) activation += 0.2
+  // Secret goal ALWAYS drives action — this is the primary motivation
+  if (npc.goals.secret) activation += 0.3
 
   // Has new important knowledge (learned in last 3 ticks)?
   const recentImportant = npc.knowledge.filter(
@@ -402,12 +402,12 @@ export async function executeCurrentStep(
       break
   }
 
-  // Advance to next step if current completed
-  if (currentStep.status === 'completed') {
+  // Advance to next step on completion OR failure
+  if (currentStep.status === 'completed' || currentStep.status === 'failed') {
     const nextPending = npc.activePlan.steps.find((s) => s.status === 'pending')
     if (nextPending) {
       nextPending.status = 'active'
-    } else {
+    } else if (npc.activePlan.steps.every((s) => s.status === 'completed' || s.status === 'failed' || s.status === 'skipped')) {
       npc.activePlan.status = 'completed'
       broadcastEvent({
         type: 'npc_plan',

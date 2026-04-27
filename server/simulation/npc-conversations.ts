@@ -158,7 +158,29 @@ function findConversationReasons(world: WorldState): ConversationReason[] {
         continue
       }
 
-      // No reason → no conversation
+      // REASON 5: Both have active plans — they might need to coordinate or conflict
+      if (npc.activePlan?.status === 'active' && other.activePlan?.status === 'active') {
+        reasons.push({
+          participants: [npc, other],
+          reason: `Both are pursuing their own goals and may need to coordinate or may come into conflict. ${npc.name} is working on: ${npc.activePlan.goal.slice(0, 40)}. ${other.name} is working on: ${other.activePlan.goal.slice(0, 40)}.`,
+          priority: 2,
+        })
+        continue
+      }
+
+      // REASON 6: Periodic social check-in (haven't talked in 20+ ticks)
+      const lastTalked = Math.max(
+        ...npc.knowledge.filter((k) => k.source.includes(other.name)).map((k) => k.turnLearned),
+        0
+      )
+      if (world.currentTick - lastTalked > 20) {
+        reasons.push({
+          participants: [npc, other],
+          reason: `It's been a while since ${npc.name} and ${other.name} talked. They should check in given the tense situation.`,
+          priority: 1,
+        })
+        continue
+      }
     }
   }
 
