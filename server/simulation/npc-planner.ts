@@ -259,11 +259,33 @@ export async function executeCurrentStep(
     case 'observe':
       result = executeObserve(npc, currentStep, world)
       break
-    default:
+    default: {
       // UNIVERSAL HANDLER: route ALL other actions through Game Master
-      // This covers: recruit, confront, poison, steal, charm, sabotage,
-      // fight, heal, lockpick, use_item, share_info, and anything else
+      // First: if targeting an NPC, ensure we're at the same location
+      const targetNpcForStep = world.npcs.find((n) =>
+        n.id !== npc.id && (
+          n.id === currentStep.target ||
+          n.name.toLowerCase().includes(currentStep.target.toLowerCase()) ||
+          currentStep.target.toLowerCase().includes(n.name.toLowerCase()) ||
+          currentStep.description.toLowerCase().includes(n.name.toLowerCase())
+        )
+      )
+
+      // Auto-travel to target NPC's location if not there
+      if (targetNpcForStep && targetNpcForStep.currentLocationId !== npc.currentLocationId) {
+        const fromLoc = npc.currentLocationId
+        moveNpc(npc.id, targetNpcForStep.currentLocationId)
+        broadcastEvent({
+          type: 'npc_moved',
+          data: { npcId: npc.id, fromLocationId: fromLoc, toLocationId: targetNpcForStep.currentLocationId },
+        })
+        result = { executed: true, description: `${npc.name} goes to find ${targetNpcForStep.name}` }
+        // Don't complete the step yet — next tick will execute the actual action
+        break
+      }
+
       result = await executeAttempt(npc, currentStep, world)
+    }
       break
   }
 
