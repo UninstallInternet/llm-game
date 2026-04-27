@@ -267,16 +267,14 @@ export async function executeCurrentStep(
     const descLower = currentStep.description.toLowerCase()
     const tLower = currentStep.target.toLowerCase()
 
-    // Check if step expects people who aren't here
-    const expectsPeople = descLower.includes('recruit') || descLower.includes('gather') ||
-      descLower.includes('find') || descLower.includes('meet') || descLower.includes('talk')
-    if (expectsPeople) {
-      const targetNpcsHere = world.npcs.filter((n) => {
-        if (n.id === npc.id) return false
-        if (n.currentLocationId !== npc.currentLocationId) return false
-        const firstName = n.name.split(' ')[0].toLowerCase()
-        return tLower.includes(firstName) || descLower.includes(firstName) || descLower.includes(n.occupation.toLowerCase())
-      })
+    // Check if step explicitly targets a specific NPC by name
+    const targetedNpc = world.npcs.find((n) => {
+      if (n.id === npc.id) return false
+      const firstName = n.name.split(' ')[0].toLowerCase()
+      return firstName.length >= 3 && (tLower.includes(firstName) || descLower.includes(firstName))
+    })
+    if (targetedNpc) {
+      const targetNpcsHere = [targetedNpc].filter((n) => n.currentLocationId === npc.currentLocationId)
 
       // Nobody matching the description is here
       if (targetNpcsHere.length === 0) {

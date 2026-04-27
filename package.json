@@ -8,6 +8,7 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc -b && vite build",
+    "test": "tsx scripts/test-integration.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "seed": "tsx scripts/seed-world.ts"
