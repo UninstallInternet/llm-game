@@ -109,8 +109,8 @@ Respond with ONLY JSON (no markdown):
   "new_knowledge": [{ "content": "Detailed summary of what was said, learned, or revealed. Include names, specifics, context. 2-3 sentences.", "source": "who told you", "importance": 0.1 to 1.0 }],
   "wants_to_end_conversation": false,
   "action_after": null or "what you'll do after",
-  "state_changes": null or ["add:state_tag", "remove:state_tag"],
-  "new_agreement": null or "what you agreed to"
+  "state_changes": ["add:tag", "remove:tag"] or null — TRACK ALL VISIBLE CHANGES to your physical state, clothing, posture, or condition. If clothes are removed: "add:nude" or "add:topless". If injured: "add:bleeding". If sitting: "add:sitting". If the visitor changed your state in any way, you MUST note it here.,
+  "new_agreement": null or "what you agreed to do — be specific"
 }
 
 IMPORTANCE SCALE: name intro=0.2, casual chat=0.3, useful info=0.5, secret revealed=0.8, critical revelation=1.0
@@ -230,6 +230,7 @@ ${othersPresent ? `Others nearby who might overhear: ${othersPresent}` : 'They a
 ${relevantEvents ? `Current events: ${relevantEvents}` : ''}
 
 NPC_1: ${npc1.name}, ${npc1.occupation}, mood: ${npc1.mood.current}, hp: ${npc1.physical.health}/100
+Appearance: ${npc1.appearance}${(npc1.stateFlags?.length ?? 0) > 0 ? ` [Currently: ${npc1.stateFlags.join(', ')}]` : ''}
 Personality: ${npc1.personality.traits.join(', ')}. ${npc1.personality.speechStyle}.
 Goal: ${npc1.goals.public} (secret: ${npc1.goals.secret})
 Inventory: ${npc1.inventory.map((i) => i.name).join(', ') || 'nothing'}
@@ -238,6 +239,7 @@ Knows: ${k1 || 'nothing notable'}
 ${formatRel(rel1to2, npc2.name)}
 
 NPC_2: ${npc2.name}, ${npc2.occupation}, mood: ${npc2.mood.current}, hp: ${npc2.physical.health}/100
+Appearance: ${npc2.appearance}${(npc2.stateFlags?.length ?? 0) > 0 ? ` [Currently: ${npc2.stateFlags.join(', ')}]` : ''}
 Personality: ${npc2.personality.traits.join(', ')}. ${npc2.personality.speechStyle}.
 Goal: ${npc2.goals.public} (secret: ${npc2.goals.secret})
 Inventory: ${npc2.inventory.map((i) => i.name).join(', ') || 'nothing'}

@@ -104,7 +104,12 @@ function migrateWorld(world: Partial<WorldState>): WorldState {
       ...l,
       tags: l.tags ?? [l.type ?? 'other'],
       securityLevel: l.securityLevel ?? 0,
-      containers: l.containers ?? [],
+      containers: (l.containers ?? []).map((c) => ({
+        ...c,
+        searchCount: (c as unknown as { searchCount?: number; searched?: boolean }).searchCount ??
+          ((c as unknown as { searched?: boolean }).searched ? 1 : 0),
+        lastSearchTick: (c as unknown as { lastSearchTick?: number }).lastSearchTick ?? 0,
+      } as import('../../shared/types.js').LocationContainer)),
       fixtures: l.fixtures ?? [],
       items: l.items ?? [],
     })),
@@ -387,8 +392,22 @@ export function addNpcAgreement(
   const npc = getNpc(npcId)
   if (!npc) return
 
+  // Dedup: if same withId + similar content exists, update tick instead of duplicating
+  const existing = (npc.agreements ?? []).find(
+    (a) => a.withId === withId && a.active && (
+      a.content.toLowerCase() === content.toLowerCase() ||
+      a.content.toLowerCase().includes(content.toLowerCase().slice(0, 30)) ||
+      content.toLowerCase().includes(a.content.toLowerCase().slice(0, 30))
+    )
+  )
+  if (existing) {
+    existing.madeAtTick = tick
+    const updated: NPC = { ...npc, agreements: [...(npc.agreements ?? [])] }
+    currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+    return
+  }
+
   const agreements = [...(npc.agreements ?? []), { withId, content, madeAtTick: tick, active: true }]
-  // Keep last 10 agreements
   const trimmed = agreements.slice(-10)
 
   const updated: NPC = { ...npc, agreements: trimmed }

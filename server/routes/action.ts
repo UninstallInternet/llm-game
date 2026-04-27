@@ -39,7 +39,17 @@ actionRoutes.post('/', async (req, res) => {
 
     // ── Search action: try to find items in containers ──
     if (actionLower.includes('search') || actionLower.includes('look through') || actionLower.includes('examine')) {
-      const unsearched = location.containers.find((c) => !c.searched)
+      // Find best container to search: prefer unsearched, then least-searched with cooldown passed
+      const sortedContainers = [...location.containers].sort((a, b) => {
+        const aCount = a.searchCount ?? (a as { searched?: boolean }).searched ? 1 : 0
+        const bCount = b.searchCount ?? (b as { searched?: boolean }).searched ? 1 : 0
+        return (aCount as number) - (bCount as number)
+      })
+      const unsearched = sortedContainers.find((c) => {
+        const count = c.searchCount ?? 0
+        const lastTick = c.lastSearchTick ?? 0
+        return count === 0 || (world.currentTick - lastTick >= 6)
+      })
 
       if (!unsearched) {
         onPlayerAction()
@@ -47,7 +57,7 @@ actionRoutes.post('/', async (req, res) => {
           success: true,
           data: {
             outcome: 'partial_success',
-            narrative: `You search ${location.name} thoroughly but find nothing new. Every container has already been checked.`,
+            narrative: `You search ${location.name} but it's too soon since the last search. Try again later.`,
             itemFound: null,
             healthDelta: 0,
             energyDelta: -3,
@@ -58,7 +68,6 @@ actionRoutes.post('/', async (req, res) => {
         return
       }
 
-      // Create a pseudo-NPC for the player to use the search system
       const playerAsNpc = {
         id: 'player',
         name: 'You',
@@ -71,7 +80,8 @@ actionRoutes.post('/', async (req, res) => {
       const item = await searchContainer(
         playerAsNpc as Parameters<typeof searchContainer>[0],
         location,
-        unsearched.id
+        unsearched.id,
+        world.currentTick
       )
 
       onPlayerAction()

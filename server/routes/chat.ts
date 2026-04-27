@@ -123,9 +123,18 @@ chatRoutes.post('/', async (req, res) => {
       updateNpcStateFlags(npcId, npcResponse.state_changes)
     }
 
-    // Record agreement
+    // Record agreement + create action-triggering knowledge
     if (npcResponse.new_agreement) {
       addNpcAgreement(npcId, 'player', npcResponse.new_agreement, world.currentTick)
+      addNpcKnowledge(npcId, [{
+        id: uuid(),
+        content: `I agreed with the visitor to: ${npcResponse.new_agreement}. I should act on this commitment.`,
+        source: 'self — agreement made',
+        confidence: 1.0,
+        importance: 0.9,
+        turnLearned: world.currentTick,
+        isSecret: false,
+      }])
     }
 
     // Advance simulation and persist

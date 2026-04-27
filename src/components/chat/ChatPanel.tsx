@@ -70,7 +70,7 @@ export function ChatPanel() {
   }
 
   // Quick action buttons
-  const unsearchedContainers = location?.containers.filter((c) => !c.searched) ?? []
+  const unsearchedContainers = location?.containers.filter((c) => (c.searchCount ?? 0) === 0 || (world && world.currentTick - (c.lastSearchTick ?? 0) >= 6)) ?? []
   const locationItems = location?.items ?? []
 
   return (

@@ -170,13 +170,20 @@ export function preCheckAction(
 export async function searchContainer(
   npc: NPC,
   location: Location,
-  containerId: string
+  containerId: string,
+  currentTick = 0
 ): Promise<Item | null> {
   const container = location.containers.find((c) => c.id === containerId)
   if (!container) return null
-  if (container.searched) return null
 
-  container.searched = true
+  // Check cooldown for re-search
+  const searchCount = container.searchCount ?? 0
+  const lastSearchTick = container.lastSearchTick ?? 0
+  if (searchCount > 0 && currentTick - lastSearchTick < 6) return null
+
+  // Update search tracking
+  container.searchCount = searchCount + 1
+  container.lastSearchTick = currentTick
 
   const hasSkillMatch = npc.occupationTags.some((tag) =>
     container.expectedItemTypes.some((expected) =>
@@ -189,8 +196,9 @@ export async function searchContainer(
   const skillBonus = hasSkillMatch ? 0.2 : 0
   const difficultyPenalty = container.searchDifficulty * 0.08
   const healthPenalty = npc.physical.health < 50 ? 0.15 : 0
+  const diminish = Math.pow(0.7, searchCount) // each re-search is harder
 
-  const successChance = Math.max(0.1, baseChance + skillBonus - difficultyPenalty - healthPenalty)
+  const successChance = Math.max(0.05, (baseChance + skillBonus - difficultyPenalty - healthPenalty) * diminish)
 
   if (Math.random() > successChance) return null
 

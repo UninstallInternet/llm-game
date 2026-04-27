@@ -44,6 +44,18 @@ export function calculateActivation(npc: NPC, world: WorldState): number {
   // No plan but has goals?
   if (!npc.activePlan && npc.goals.secret) activation += 0.15
 
+  // Has active agreements to act on?
+  const activeAgreements = (npc.agreements ?? []).filter((a) => a.active)
+  if (activeAgreements.length > 0 && !npc.activePlan) activation += 0.3
+
+  // Recent significant relationship change (learned about player in last 2 ticks)?
+  const recentRelKnowledge = npc.knowledge.filter(
+    (k) => k.turnLearned >= world.currentTick - 2 &&
+      k.importance >= 0.6 &&
+      (k.source.toLowerCase().includes('player') || k.source.toLowerCase().includes('visitor'))
+  )
+  if (recentRelKnowledge.length > 0) activation += 0.2
+
   // Personality modifier: ambitious NPCs are more active
   if (npc.personality.traits.some((t) => t.includes('ambitious') || t.includes('curious') || t.includes('restless'))) {
     activation += 0.1
@@ -70,7 +82,8 @@ export async function formPlan(npc: NPC, world: WorldState): Promise<NpcPlan | n
       const feeling = rel
         ? `(${rel.type}, ${rel.trust > 20 ? 'trust' : rel.trust < -20 ? 'distrust' : 'neutral'})`
         : '(stranger)'
-      return `${n.name} (${n.occupation}) ${feeling} [${n.physical.status}, hp:${n.physical.health}]`
+      const stateStr = (n.stateFlags?.length ?? 0) > 0 ? ` {${n.stateFlags.join(', ')}}` : ''
+      return `${n.name} (${n.occupation}) ${feeling} [${n.physical.status}, hp:${n.physical.health}]${stateStr}`
     })
     .join('\n  ')
 
@@ -78,7 +91,7 @@ export async function formPlan(npc: NPC, world: WorldState): Promise<NpcPlan | n
   const locationDetails = world.locations.map((loc) => {
     const security = loc.securityLevel > 0 ? ` [SECURITY: ${loc.securityLevel}/5]` : ''
     const containers = loc.containers
-      .filter((c) => !c.searched)
+      .filter((c) => (c.searchCount ?? 0) === 0)
       .map((c) => c.name)
     const containerStr = containers.length > 0 ? ` — searchable: ${containers.join(', ')}` : ''
     const fixtures = loc.fixtures.length > 0 ? ` — has: ${loc.fixtures.join(', ')}` : ''
@@ -113,7 +126,7 @@ export async function formPlan(npc: NPC, world: WorldState): Promise<NpcPlan | n
   const currentLocDetail = location
     ? `${location.name} (${location.type}). ${location.description}
   Fixtures: ${location.fixtures.join(', ') || 'none'}
-  Unsearched containers: ${location.containers.filter((c) => !c.searched).map((c) => c.name).join(', ') || 'none'}
+  Unsearched containers: ${location.containers.filter((c) => (c.searchCount ?? 0) === 0).map((c) => c.name).join(', ') || 'none'}
   Security level: ${location.securityLevel}/5`
     : 'unknown'
 
@@ -312,7 +325,7 @@ async function executeSearch(npc: NPC, step: PlanStep, world: WorldState): Promi
   }
 
   // Find an unsearched container
-  const unsearched = location.containers.find((c) => !c.searched)
+  const unsearched = location.containers.find((c) => (c.searchCount ?? 0) === 0)
   if (!unsearched) {
     step.status = 'completed'
     step.result = 'Nothing more to search here'

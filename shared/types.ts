@@ -112,7 +112,8 @@ export interface LocationContainer {
   name: string            // "tool chest", "filing cabinet"
   tags: string[]          // ["locked", "metal"]
   searchDifficulty: number // 0-5
-  searched: boolean
+  searchCount: number     // how many times searched
+  lastSearchTick: number  // when last searched
   expectedItemTypes: string[]
 }
 
