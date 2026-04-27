@@ -423,12 +423,22 @@ export async function executeCurrentStep(
 }
 
 function executeTravel(npc: NPC, step: PlanStep, world: WorldState): { executed: boolean; description: string } {
-  const targetLocId = step.target
-  const targetLoc = world.locations.find((l) => l.id === targetLocId || l.name.toLowerCase().includes(targetLocId.toLowerCase()))
+  const targetLower = step.target.toLowerCase()
+  const descLower = step.description.toLowerCase()
+
+  // Match location by: ID, name in target, name in description, or target in name
+  const targetLoc = world.locations.find((l) => {
+    const locLower = l.name.toLowerCase()
+    return l.id === step.target ||
+      locLower === targetLower ||
+      targetLower.includes(locLower) ||
+      descLower.includes(locLower) ||
+      locLower.includes(targetLower)
+  })
 
   if (!targetLoc) {
     step.status = 'failed'
-    step.result = 'Location not found'
+    step.result = `Location not found in: "${step.target.slice(0, 40)}"`
     return { executed: false, description: `${npc.name} couldn't find the location` }
   }
 
