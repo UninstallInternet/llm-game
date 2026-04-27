@@ -305,6 +305,7 @@ export async function executeCurrentStep(
       break
     default: {
       // UNIVERSAL HANDLER: route ALL other actions through Game Master
+      
       const descLower = currentStep.description.toLowerCase()
       const targetLower = currentStep.target.toLowerCase()
 

@@ -67,11 +67,13 @@ async function runTick(): Promise<void> {
     const updatedWorld = getWorld()
 
     for (const npc of updatedWorld.npcs) {
-      if (llmBudget <= 0) break
-      if (isNpcBusy(npc.id)) continue
+      
+      if (llmBudget <= 0) { 
+      if (isNpcBusy(npc.id)) { 
 
       const result = await processNpcTurn(npc, updatedWorld)
       llmBudget -= result.llmCalls
+      
 
       if (result.action !== 'routine' && result.action !== 'thinking') {
         console.log(`[NPC Turn] ${npc.name}: ${result.action}`)
