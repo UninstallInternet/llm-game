@@ -223,85 +223,102 @@ actionRoutes.post('/', async (req, res) => {
     })
 
     if (mentionedNpcs.length >= 1) {
-      // Interactive group activity — NPCs react to the player's action ONLY
-      // The player stays in control and can continue interacting
-      const { buildGroupConversationPrompt } = await import('../llm/prompts.js')
+      // Each NPC gets their OWN LLM call with full personal context
+      const { buildNpcSystemPrompt } = await import('../llm/prompts.js')
       const { llmCall: llmCallFn } = await import('../llm/client.js')
+      const { updateNpcMoodGeneral: updateMood, addNpcAgreement: addAgreement } = await import('../game/state.js')
 
-      const groupNames = mentionedNpcs.map((n) => n.name).join(', ')
-      const { system, user: baseUser } = buildGroupConversationPrompt(mentionedNpcs, world, true)
+      const otherNpcNames = mentionedNpcs.map((n) => n.name).join(', ')
+      const reactions: Array<{ npcName: string; response: string }> = []
 
-      const reactionPrompt = `${baseUser}
+      for (const npc of mentionedNpcs) {
+        try {
+          // Full personal system prompt — all their memories, agreements, personality
+          const systemPrompt = buildNpcSystemPrompt(npc, world, action)
 
-THE VISITOR just did: "${action}"
+          const otherParticipants = mentionedNpcs
+            .filter((n) => n.id !== npc.id)
+            .map((n) => `${n.name} (${n.occupation}${(n.stateFlags?.length ?? 0) > 0 ? `, ${n.stateFlags.join('/')}` : ''})`)
+            .join(', ')
 
-Generate ONLY the NPCs' reactions — do NOT generate any visitor/player dialogue or actions. The visitor will respond in their own time.
+          const reactionPrompt = `The visitor just did this action in your presence: "${action}"
+${otherParticipants ? `Also present and involved: ${otherParticipants}` : ''}
 
-Each NPC reacts in character: some enthusiastic, others reluctant, others cautious. Show their personality through body language and short dialogue. 3-5 lines of NPC-ONLY reactions.`
+React to what the visitor did. Respond in character with *actions* and "dialogue". 1-3 sentences.
+Do NOT speak for the visitor or other NPCs — only YOUR reaction.
 
-      try {
-        const rawResponse = await llmCallFn('simulation', system, reactionPrompt, true)
-        let cleaned = rawResponse.trim()
-        if (cleaned.startsWith('```')) {
-          cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
-        }
-        const parsed = JSON.parse(cleaned) as {
-          dialogue?: Array<{ speaker: string; says: string }>
-          summary: string
-          outcome?: { agreement_reached?: string | null; item_transferred?: { from: string; to: string; item: string } | null; conflict?: string | null }
-          takeaways?: Record<string, { knowledge: string; mood_shift: string | null; internal_reaction: string }>
-        }
+Respond with ONLY JSON:
+{
+  "reaction": "your *actions* and \"dialogue\" response",
+  "internal_thought": "what you privately think",
+  "mood_change": { "current": "mood", "toward_player_delta": -5 to 5, "reason": "why" } or null,
+  "new_knowledge": [{ "content": "what you observed/learned", "source": "witnessed", "importance": 0.1 to 1.0 }],
+  "state_changes": null or ["add:tag"],
+  "new_agreement": null or "what you agreed to"
+}`
 
-        // Build narrative from NPC-only reactions
-        const npcReactions = (parsed.dialogue ?? [])
-          .filter((d) => d.speaker.toLowerCase() !== 'visitor' && d.speaker.toLowerCase() !== 'player')
-          .map((d) => `${d.speaker}: ${d.says}`)
-          .join('\n\n')
-        const narrative = npcReactions || parsed.summary || `${groupNames} react to your action.`
-
-        // Give all participants knowledge
-        for (const npc of mentionedNpcs) {
-          const takeaway = parsed.takeaways?.[npc.name] ?? parsed.takeaways?.[npc.id]
-          addNpcKnowledge(npc.id, [{
-            id: uuid(),
-            content: takeaway?.knowledge ?? `The visitor initiated: ${action}. ${parsed.summary}`,
-            source: 'experienced with visitor',
-            confidence: 1.0,
-            importance: 0.8,
-            turnLearned: world.currentTick,
-            isSecret: false,
-          }])
-          if (takeaway?.mood_shift) {
-            const { updateNpcMoodGeneral: updateMood } = await import('../game/state.js')
-            updateMood(npc.id, takeaway.mood_shift, `after ${action} with visitor`)
+          const rawResponse = await llmCallFn('conversation', systemPrompt, reactionPrompt, true)
+          let cleaned = rawResponse.trim()
+          if (cleaned.startsWith('```')) {
+            cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
           }
-        }
-
-        if (parsed.outcome?.agreement_reached) {
-          const { addNpcAgreement: addAgreement } = await import('../game/state.js')
-          for (const npc of mentionedNpcs) {
-            addAgreement(npc.id, 'player', parsed.outcome.agreement_reached, world.currentTick)
+          const parsed = JSON.parse(cleaned) as {
+            reaction: string
+            internal_thought?: string
+            mood_change?: { current: string; toward_player_delta: number; reason: string } | null
+            new_knowledge?: Array<{ content: string; source: string; importance?: number }> | null
+            state_changes?: string[] | null
+            new_agreement?: string | null
           }
+
+          reactions.push({ npcName: npc.name, response: parsed.reaction || '...' })
+
+          // Apply all state changes — same as chat route
+          if (parsed.mood_change) {
+            const { updateNpcMood } = await import('../game/state.js')
+            updateNpcMood(npc.id, parsed.mood_change.current, parsed.mood_change.toward_player_delta, parsed.mood_change.reason)
+          }
+          if (parsed.new_knowledge && parsed.new_knowledge.length > 0) {
+            addNpcKnowledge(npc.id, parsed.new_knowledge.map((k) => ({
+              id: uuid(),
+              content: k.content,
+              source: k.source,
+              confidence: 0.9,
+              importance: Math.max(0.1, Math.min(1.0, k.importance ?? 0.5)),
+              turnLearned: world.currentTick,
+              isSecret: false,
+            })))
+          }
+          if (parsed.state_changes) {
+            const { updateNpcStateFlags } = await import('../game/state.js')
+            updateNpcStateFlags(npc.id, parsed.state_changes)
+          }
+          if (parsed.new_agreement) {
+            addAgreement(npc.id, 'player', parsed.new_agreement, world.currentTick)
+          }
+        } catch (err) {
+          console.error(`NPC reaction failed for ${npc.name}:`, err)
+          reactions.push({ npcName: npc.name, response: '*looks on without reacting*' })
         }
-
-        onPlayerAction()
-        persistGame()
-
-        res.json({
-          success: true,
-          data: {
-            outcome: 'strong_success' as const,
-            narrative,
-            itemFound: null,
-            healthDelta: 0,
-            energyDelta: -5,
-            injury: null,
-          },
-        } satisfies ApiResponse<PlayerActionResponse>)
-        return
-      } catch (err) {
-        console.error('Group activity reaction failed:', err)
       }
+
+      const narrative = reactions.map((r) => `${r.npcName}: ${r.response}`).join('\n\n')
+
+      onPlayerAction()
+      persistGame()
+
+      res.json({
+        success: true,
+        data: {
+          outcome: 'strong_success' as const,
+          narrative,
+          itemFound: null,
+          healthDelta: 0,
+          energyDelta: -5,
+          injury: null,
+        },
+      } satisfies ApiResponse<PlayerActionResponse>)
+      return
     }
 
     // ── Any other action: Game Master adjudicates ──
