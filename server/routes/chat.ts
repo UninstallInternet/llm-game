@@ -13,6 +13,8 @@ import {
   persistGame,
   markNpcBusy,
   markNpcFree,
+  updateNpcStateFlags,
+  addNpcAgreement,
 } from '../game/state.js'
 import { v4 as uuid } from 'uuid'
 import { broadcastEvent } from './events.js'
@@ -99,7 +101,7 @@ chatRoutes.post('/', async (req, res) => {
         content: k.content,
         source: k.source,
         confidence: 0.9,
-        importance: 0.7,
+        importance: Math.max(0.1, Math.min(1.0, k.importance ?? 0.5)),
         turnLearned: world.currentTick,
         isSecret: false,
       }))
@@ -113,6 +115,16 @@ chatRoutes.post('/', async (req, res) => {
         type: 'npc_action',
         data: { npcId, description: npcResponse.action_after },
       })
+    }
+
+    // Apply state changes
+    if (npcResponse.state_changes && npcResponse.state_changes.length > 0) {
+      updateNpcStateFlags(npcId, npcResponse.state_changes)
+    }
+
+    // Record agreement
+    if (npcResponse.new_agreement) {
+      addNpcAgreement(npcId, 'player', npcResponse.new_agreement, world.currentTick)
     }
 
     // Advance simulation and persist

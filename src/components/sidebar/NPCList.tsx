@@ -42,13 +42,16 @@ export function NPCList() {
                 </span>
                 <span className="text-xs">{dispositionIndicator(disposition)}</span>
               </div>
-              <div className="text-xs text-gray-500 flex items-center gap-1">
+              <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
                 <span>{npc.occupation}</span>
                 <span className="text-gray-700">&middot;</span>
                 <span className="italic">{npc.mood.current}</span>
                 {npc.physical?.status !== 'alive' && (
                   <span className="text-red-500 ml-1">[{npc.physical.status}]</span>
                 )}
+                {(npc as { stateFlags?: string[] }).stateFlags?.map((flag, fi) => (
+                  <span key={fi} className="text-purple-400 bg-purple-900/20 px-1 rounded text-[10px]">{flag}</span>
+                ))}
               </div>
               {isKnown && disposition !== 0 && (
                 <div className="mt-1 flex items-center gap-1">

@@ -68,6 +68,8 @@ function parseNpcResponse(raw: string): NPCResponse {
       new_knowledge: Array.isArray(parsed.new_knowledge) ? parsed.new_knowledge : null,
       wants_to_end_conversation: parsed.wants_to_end_conversation ?? false,
       action_after: typeof parsed.action_after === 'string' ? parsed.action_after : null,
+      state_changes: Array.isArray(parsed.state_changes) ? parsed.state_changes : null,
+      new_agreement: typeof parsed.new_agreement === 'string' ? parsed.new_agreement : null,
     }
   } catch {
     // JSON parse failed entirely — extract dialogue from raw text
@@ -81,12 +83,12 @@ function parseNpcResponse(raw: string): NPCResponse {
         new_knowledge: null,
         wants_to_end_conversation: false,
         action_after: null,
+        state_changes: null,
+        new_agreement: null,
       }
     }
 
-    // Last resort: use the raw text but clean it up
     let fallback = raw.trim()
-    // Remove JSON artifacts
     fallback = fallback.replace(/[{}[\]]/g, '').replace(/"dialogue"\s*:/gi, '').replace(/"internal_thought".*$/is, '').trim()
     if (fallback.length > 500) fallback = fallback.slice(0, 500)
 
@@ -97,6 +99,8 @@ function parseNpcResponse(raw: string): NPCResponse {
       new_knowledge: null,
       wants_to_end_conversation: false,
       action_after: null,
+      state_changes: null,
+      new_agreement: null,
     }
   }
 }

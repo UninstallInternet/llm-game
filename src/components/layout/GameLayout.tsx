@@ -46,7 +46,7 @@ export function GameLayout() {
           </button>
           <div className="text-right">
             <div className="text-amber-400 font-mono">
-              Day {world.time.day} &middot; {world.time.timeOfDay}
+              Day {world.time.day} &middot; {String(world.time.hour ?? 8).padStart(2, '0')}:{String(world.time.minute ?? 0).padStart(2, '0')} &middot; {world.time.timeOfDay}
             </div>
             <div className="text-xs text-gray-500">
               {world.npcs.length} characters &middot; {world.locations.length} locations

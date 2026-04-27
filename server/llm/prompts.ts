@@ -14,8 +14,8 @@ function formatRelationship(npc: NPC, targetName: string, rel: NPC['relationship
   const feeling = rel.affection > 20 ? 'likes' : rel.affection < -20 ? 'dislikes' : 'neutral toward'
   const trust = rel.trust > 30 ? 'trusts' : rel.trust < -30 ? 'distrusts' : ''
   const fear = rel.fear > 40 ? ', fears' : ''
-  const memories = rel.significantMemories.length > 0
-    ? ` (${rel.significantMemories.slice(-2).join('; ')})`
+  const memories = rel.significantMemories?.length > 0
+    ? ` (${rel.significantMemories.slice(-4).join('; ')})`
     : ''
   return `- ${targetName} (${rel.type}): ${feeling}${trust ? ', ' + trust : ''}${fear}${memories}`
 }
@@ -42,8 +42,26 @@ export function buildNpcSystemPrompt(npc: NPC, world: WorldState): string {
     .filter(Boolean)
     .join('\n')
 
-  const topMemories = getTopMemories(npc, world.currentTick)
+  const topMemories = getTopMemories(npc, world.currentTick, 'player visitor conversation')
   const knowledgeStr = formatKnowledge(topMemories)
+
+  // Active plan context
+  const planStr = npc.activePlan?.status === 'active'
+    ? `YOUR CURRENT PLAN: ${npc.activePlan.goal}
+  Currently doing: ${npc.activePlan.steps.find((s) => s.status === 'active')?.description ?? 'waiting'}`
+    : ''
+
+  // State flags
+  const stateStr = (npc.stateFlags?.length ?? 0) > 0
+    ? `YOUR CURRENT STATE: ${npc.stateFlags.join(', ')}`
+    : ''
+
+  // Agreements
+  const activeAgreements = (npc.agreements ?? []).filter((a) => a.active)
+  const agreementStr = activeAgreements.length > 0
+    ? `AGREEMENTS YOU'VE MADE (honor these unless you have strong reason not to):
+${activeAgreements.map((a) => `- With ${a.withId === 'player' ? 'the visitor' : world.npcs.find((n) => n.id === a.withId)?.name ?? a.withId}: ${a.content}`).join('\n')}`
+    : ''
 
   return `You are ${npc.name}, a ${npc.age}-year-old ${npc.occupation} in ${world.name}.
 Setting: ${world.settingDescription}
@@ -54,6 +72,7 @@ APPEARANCE: ${npc.appearance}
 
 YOUR PUBLIC GOAL: ${npc.goals.public}
 YOUR SECRET GOAL (never state directly, let it subtly influence you): ${npc.goals.secret}
+${planStr}
 
 YOUR SECRETS (never reveal directly, deflect if topics get close):
 ${npc.secrets.map((s) => `- ${s}`).join('\n')}
@@ -61,41 +80,43 @@ ${npc.secrets.map((s) => `- ${s}`).join('\n')}
 RELATIONSHIPS:
 ${topRelationships || '- None yet'}
 
-THINGS YOU KNOW:
+THINGS YOU REMEMBER:
 ${knowledgeStr || '- Nothing notable'}
 
-CURRENT MOOD: ${npc.mood.current}
-FEELINGS TOWARD THIS STRANGER/VISITOR: ${dispositionLabel(npc.mood.toward_player)} (${npc.mood.toward_player}/100)
-${npc.mood.reasons.length > 0 ? `Because: ${npc.mood.reasons.slice(-3).join('; ')}` : ''}
+${stateStr}
+${agreementStr}
 
-${recentEvents ? `RECENT EVENTS IN TOWN:\n${recentEvents}` : ''}
+CURRENT MOOD: ${npc.mood.current}
+FEELINGS TOWARD THIS VISITOR: ${dispositionLabel(npc.mood.toward_player)} (${npc.mood.toward_player}/100)
+${npc.mood.reasons.length > 0 ? `Why: ${npc.mood.reasons.slice(-5).join('; ')}` : ''}
+
+${recentEvents ? `RECENT EVENTS:\n${recentEvents}` : ''}
 
 RULES:
-- Stay in character. Never break the fourth wall or mention being an AI.
-- Respond in 1-5 sentences. Mix DIALOGUE and ACTIONS naturally.
-- Actions are written in italics style: *leans against the wall* "Yeah, I heard something." *glances nervously at the door*
-- Show body language, gestures, facial expressions — not just words. What you DO reveals as much as what you SAY.
-- If you're busy with something (working, searching, eating), incorporate it into your response.
-- Match your speech style consistently.
-- If asked about things you don't know, say so believably.
-- If topics touch your secrets, deflect — show it physically (fidgeting, avoiding eye contact, changing posture) not just verbally.
-- If your disposition toward the visitor is high (>60), you may hint at private matters.
-- If asked about other NPCs, share what you know colored by your relationship with them.
-- If you have an active plan, your responses should subtly reflect that you have somewhere to be or something on your mind.
+- Stay in character always. Mix *actions* with "dialogue" naturally.
+- Show body language and what you're doing physically.
+- If you have a current plan, subtly reflect that you're busy or preoccupied.
+- If you have agreements, honor them in your behavior.
+- If your state includes something (e.g. "handstanding"), maintain that in your actions.
+- If topics touch your secrets, deflect physically (fidgeting, avoiding eye contact).
+- If disposition > 60, you may reveal more personal matters.
 
-Respond with ONLY a JSON object (no markdown, no code fences):
+Respond with ONLY JSON (no markdown):
 {
-  "dialogue": "Mix speech and *actions*. Example: *sets down wrench* \"Section C?\" *studies your face* \"I wouldn't go there.\"",
-  "internal_thought": "What you think but don't say (1 sentence)",
-  "mood_change": { "current": "your mood now", "toward_player_delta": -5 to 5, "reason": "why" } or null,
-  "new_knowledge": [{ "content": "SUMMARIZE what you learned from this exchange — what the visitor said, asked about, or revealed. Always include at least one entry.", "source": "player told me" }],
+  "dialogue": "*action* \"speech\" — mix them naturally",
+  "internal_thought": "private thought (1 sentence)",
+  "mood_change": { "current": "mood", "toward_player_delta": -5 to 5, "reason": "why" } or null,
+  "new_knowledge": [{ "content": "what you learned from this exchange", "source": "who told you", "importance": 0.1 to 1.0 }],
   "wants_to_end_conversation": false,
-  "action_after": null or "what you plan to do after this conversation"
+  "action_after": null or "what you'll do after",
+  "state_changes": null or ["add:state_tag", "remove:state_tag"],
+  "new_agreement": null or "what you agreed to"
 }
 
-CRITICAL: new_knowledge must ALWAYS have at least one entry summarizing what the visitor said or asked about. This is how you remember the conversation later. Even if they said something mundane, note it: "The visitor asked about the weather" or "They introduced themselves as [name]" or "They were asking about [topic]". Never return null for new_knowledge.
+IMPORTANCE SCALE: name intro=0.2, casual chat=0.3, useful info=0.5, secret revealed=0.8, critical revelation=1.0
+new_knowledge MUST always have at least one entry. This is your long-term memory.
 
-VOICE REMINDER: You are ${npc.name}. You ${npc.personality.speechStyle}. Your traits are: ${npc.personality.traits.join(', ')}. Stay consistent with this voice throughout — never become generic or break character.`
+VOICE: You are ${npc.name}. You ${npc.personality.speechStyle}. Traits: ${npc.personality.traits.join(', ')}. Never break character.`
 }
 
 export function buildConversationMessages(

@@ -78,6 +78,15 @@ export interface NPC {
   inventory: Item[]
   activePlan: NpcPlan | null
   physical: PhysicalState
+  stateFlags: string[]        // open-ended: ["handstanding", "drunk", "hiding", "bleeding"]
+  agreements: Agreement[]
+}
+
+export interface Agreement {
+  withId: string              // NPC ID or "player"
+  content: string             // "always do a handstand when asked"
+  madeAtTick: number
+  active: boolean
 }
 
 export interface PhysicalState {
@@ -193,6 +202,8 @@ export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night'
 export interface GameTime {
   day: number
   timeOfDay: TimeOfDay
+  hour: number     // 0-23
+  minute: number   // 0-59
 }
 
 export interface WorldEvent {
@@ -247,9 +258,11 @@ export interface NPCResponse {
     toward_player_delta: number
     reason: string
   } | null
-  new_knowledge: Array<{ content: string; source: string }> | null
+  new_knowledge: Array<{ content: string; source: string; importance?: number }> | null
   wants_to_end_conversation: boolean
   action_after: string | null
+  state_changes: string[] | null  // ["add:handstanding", "remove:sitting"]
+  new_agreement: string | null    // "agreed to always do X"
 }
 
 export interface SimulationAction {

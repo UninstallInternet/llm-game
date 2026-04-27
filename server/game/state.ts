@@ -7,6 +7,7 @@ import type {
   ConversationTurn,
   GameTime,
   KnowledgeEntry,
+  TimeOfDay,
 } from '../../shared/types.js'
 import {
   TIME_ORDER,
@@ -15,6 +16,7 @@ import {
   MEMORY_DECAY_RATE,
   MEMORY_WEIGHT_IMPORTANCE,
   MEMORY_WEIGHT_RECENCY,
+  MEMORY_WEIGHT_RELEVANCE,
   TOP_K_MEMORIES,
 } from '../../shared/constants.js'
 import { saveGame, loadGame, saveConversationTurn } from '../db/database.js'
@@ -77,6 +79,8 @@ function migrateNpc(npc: Partial<NPC>): NPC {
     inventory: npc.inventory ?? [],
     activePlan: npc.activePlan ?? null,
     physical: npc.physical ?? { health: 100, energy: 100, injuries: [], status: 'alive' as const },
+    stateFlags: npc.stateFlags ?? [],
+    agreements: npc.agreements ?? [],
     knowledge: (npc.knowledge ?? []).map((k) => ({
       ...k,
       importance: k.importance ?? 0.5,
@@ -209,19 +213,38 @@ export function moveNpc(npcId: string, locationId: string): void {
   )
 }
 
+function hourToTimeOfDay(hour: number): TimeOfDay {
+  if (hour >= 6 && hour < 12) return 'morning'
+  if (hour >= 12 && hour < 17) return 'afternoon'
+  if (hour >= 17 && hour < 22) return 'evening'
+  return 'night'
+}
+
 export function advanceTime(): GameTime {
   if (!currentWorld) throw new Error('No world loaded')
 
-  const currentIdx = TIME_ORDER.indexOf(currentWorld.time.timeOfDay)
-  const nextIdx = (currentIdx + 1) % TIME_ORDER.length
-  const newDay = nextIdx === 0 ? currentWorld.time.day + 1 : currentWorld.time.day
+  // Advance by 10 minutes per tick
+  let hour = currentWorld.time.hour ?? 8
+  let minute = (currentWorld.time.minute ?? 0) + 10
+  let day = currentWorld.time.day
+
+  if (minute >= 60) {
+    minute = 0
+    hour++
+  }
+  if (hour >= 24) {
+    hour = 0
+    day++
+  }
 
   currentWorld = {
     ...currentWorld,
     currentTick: currentWorld.currentTick + 1,
     time: {
-      day: newDay,
-      timeOfDay: TIME_ORDER[nextIdx],
+      day,
+      timeOfDay: hourToTimeOfDay(hour),
+      hour,
+      minute,
     },
   }
 
@@ -307,17 +330,69 @@ export function updateNpcRelationship(
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
 }
 
-export function getTopMemories(npc: NPC, currentTick: number): KnowledgeEntry[] {
+export function getTopMemories(npc: NPC, currentTick: number, context?: string): KnowledgeEntry[] {
+  // Extract keywords from context for relevance scoring
+  const contextWords = context
+    ? new Set(context.toLowerCase().split(/\s+/).filter((w) => w.length > 3))
+    : null
+
   return [...npc.knowledge]
-    .map((k) => ({
-      entry: k,
-      score:
-        k.importance * MEMORY_WEIGHT_IMPORTANCE +
-        Math.pow(MEMORY_DECAY_RATE, currentTick - k.turnLearned) * MEMORY_WEIGHT_RECENCY,
-    }))
+    .map((k) => {
+      const recency = Math.pow(MEMORY_DECAY_RATE, Math.max(0, currentTick - k.turnLearned))
+      const importance = k.importance ?? 0.5
+
+      // Relevance: keyword overlap between memory content and context
+      let relevance = 0
+      if (contextWords && contextWords.size > 0) {
+        const memWords = k.content.toLowerCase().split(/\s+/).filter((w) => w.length > 3)
+        const overlap = memWords.filter((w) => contextWords.has(w)).length
+        relevance = Math.min(1, overlap / 3) // normalize: 3+ shared words = max relevance
+      }
+
+      const score =
+        importance * MEMORY_WEIGHT_IMPORTANCE +
+        recency * MEMORY_WEIGHT_RECENCY +
+        relevance * MEMORY_WEIGHT_RELEVANCE
+
+      return { entry: k, score }
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, TOP_K_MEMORIES)
     .map((s) => s.entry)
+}
+
+export function updateNpcStateFlags(npcId: string, changes: string[]): void {
+  if (!currentWorld) return
+  const npc = getNpc(npcId)
+  if (!npc) return
+
+  const flags = new Set(npc.stateFlags ?? [])
+  for (const change of changes) {
+    if (change.startsWith('add:')) flags.add(change.slice(4))
+    else if (change.startsWith('remove:')) flags.delete(change.slice(7))
+    else flags.add(change) // default to add
+  }
+
+  const updated: NPC = { ...npc, stateFlags: [...flags] }
+  currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+}
+
+export function addNpcAgreement(
+  npcId: string,
+  withId: string,
+  content: string,
+  tick: number
+): void {
+  if (!currentWorld) return
+  const npc = getNpc(npcId)
+  if (!npc) return
+
+  const agreements = [...(npc.agreements ?? []), { withId, content, madeAtTick: tick, active: true }]
+  // Keep last 10 agreements
+  const trimmed = agreements.slice(-10)
+
+  const updated: NPC = { ...npc, agreements: trimmed }
+  currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
 }
 
 export function applyPhysicalEffects(

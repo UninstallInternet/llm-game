@@ -375,6 +375,8 @@ Respond with ONLY JSON:
       })),
       activePlan: null,
       physical: { health: 100, energy: 100, injuries: [], status: 'alive' as const },
+      stateFlags: [],
+      agreements: [],
     }
   })
 
@@ -464,7 +466,7 @@ Respond with ONLY JSON:
     name: raw.name,
     settingDescription,
     currentTick: 0,
-    time: { day: 1, timeOfDay: 'morning' },
+    time: { day: 1, timeOfDay: 'morning', hour: 8, minute: 0 },
     locations,
     npcs,
     factions,

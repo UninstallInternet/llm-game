@@ -16,7 +16,7 @@ export const NPC_DISPOSITION_THRESHOLDS = {
 } as const
 
 export const INFO_SHARE_PROBABILITY = 0.3
-export const MAX_KNOWLEDGE_PER_NPC = 50
+export const MAX_KNOWLEDGE_PER_NPC = 80
 export const KNOWLEDGE_RELEVANCE_WINDOW = 20
 
 export const LLM_MODELS = {
@@ -36,7 +36,8 @@ export const MEMORY_DECAY_RATE = 0.95 // per tick
 // ─── Memory Retrieval Weights (Stanford formula) ───
 export const MEMORY_WEIGHT_IMPORTANCE = 2.0
 export const MEMORY_WEIGHT_RECENCY = 0.5
-export const TOP_K_MEMORIES = 5
+export const TOP_K_MEMORIES = 12
+export const MEMORY_WEIGHT_RELEVANCE = 3.0
 
 // ─── NPC Autonomy Config ───
 export const ACTIVATION_THRESHOLD_LOW = 0.3
