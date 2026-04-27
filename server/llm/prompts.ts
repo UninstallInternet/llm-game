@@ -260,22 +260,35 @@ ${plan2}
 Knows: ${k2 || 'nothing notable'}
 ${formatRel(rel2to1, npc1.name)}
 
-Generate their conversation. JSON format:
+Generate their ACTUAL conversation — real dialogue with real outcomes. JSON format:
 {
-  "summary": "1-2 sentence description of what happened (player-visible)",
+  "dialogue": [
+    { "speaker": "${npc1.name}", "says": "*action* \"speech\" — what they actually say and do" },
+    { "speaker": "${npc2.name}", "says": "*action* \"speech\" — their response" },
+    { "speaker": "${npc1.name}", "says": "follow-up" },
+    { "speaker": "${npc2.name}", "says": "conclusion" }
+  ],
+  "summary": "2-3 sentence description of what happened AND what was decided/agreed/refused",
+  "outcome": {
+    "agreement_reached": "what they agreed to do together" or null,
+    "item_transferred": { "from": "npc name", "to": "npc name", "item": "item name" } or null,
+    "conflict": "description of conflict or confrontation" or null
+  },
   "npc1_takeaway": {
-    "knowledge": "what ${npc1.name} learned, observed, or discussed — include specifics, names, details. 2-3 sentences",
+    "knowledge": "Detailed: what ${npc1.name} learned, what was discussed, what was decided. 2-3 sentences with specifics.",
     "mood_shift": "new mood" or null,
     "relationship_delta": -10 to 10,
-    "internal_reaction": "private thought (1 sentence)"
+    "internal_reaction": "private thought about this encounter (1-2 sentences)"
   },
   "npc2_takeaway": {
-    "knowledge": "what ${npc2.name} learned, observed, or discussed — include specifics, names, details. 2-3 sentences",
+    "knowledge": "Detailed: what ${npc2.name} learned, what was discussed, what was decided. 2-3 sentences with specifics.",
     "mood_shift": "new mood" or null,
     "relationship_delta": -10 to 10,
-    "internal_reaction": "private thought (1 sentence)"
+    "internal_reaction": "private thought about this encounter (1-2 sentences)"
   }
-}`
+}
+
+IMPORTANT: Generate 3-5 lines of REAL dialogue. These characters should actually TALK to each other — make offers, ask questions, react, agree or disagree. The dialogue should lead to a concrete outcome (agreement, refusal, conflict, information exchange). Don't just summarize — show the conversation.`
 
   return { system, user }
 }

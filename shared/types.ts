@@ -37,6 +37,11 @@ export interface NpcConversationResult {
   summary: string
   npc1Takeaway: NpcTakeaway
   npc2Takeaway: NpcTakeaway
+  outcome: {
+    agreement_reached?: string | null
+    item_transferred?: { from: string; to: string; item: string } | null
+    conflict?: string | null
+  } | null
 }
 
 export interface ScheduleEntry {

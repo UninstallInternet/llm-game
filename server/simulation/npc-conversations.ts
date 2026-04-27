@@ -5,6 +5,8 @@ import {
   addNpcKnowledge,
   updateNpcRelationship,
   updateNpcMoodGeneral,
+  addNpcAgreement,
+  transferItem,
   isNpcBusy,
   markNpcBusy,
   markNpcFree,
@@ -158,7 +160,13 @@ function selectConversationPairs(world: WorldState): Array<[NPC, NPC]> {
 // ─── LLM Call + Parse ───
 
 interface RawConversationResponse {
+  dialogue?: Array<{ speaker: string; says: string }>
   summary: string
+  outcome?: {
+    agreement_reached?: string | null
+    item_transferred?: { from: string; to: string; item: string } | null
+    conflict?: string | null
+  }
   npc1_takeaway: {
     knowledge: string
     mood_shift: string | null
@@ -193,12 +201,17 @@ async function runConversation(
 
     const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 
+    // Build dialogue summary for event log
+    const dialogueStr = (parsed.dialogue ?? [])
+      .map((d) => `${d.speaker}: ${d.says}`)
+      .join(' | ')
+
     return {
       npc1Id: npc1.id,
       npc2Id: npc2.id,
       locationId: npc1.currentLocationId,
       tick: world.currentTick,
-      summary: parsed.summary || `${npc1.name} and ${npc2.name} had a conversation.`,
+      summary: parsed.summary || dialogueStr || `${npc1.name} and ${npc2.name} had a conversation.`,
       npc1Takeaway: {
         knowledge: parsed.npc1_takeaway?.knowledge ?? '',
         moodShift: parsed.npc1_takeaway?.mood_shift ?? null,
@@ -211,6 +224,7 @@ async function runConversation(
         relationshipDelta: clamp(parsed.npc2_takeaway?.relationship_delta ?? 0, -10, 10),
         internalReaction: parsed.npc2_takeaway?.internal_reaction ?? '',
       },
+      outcome: parsed.outcome ?? null,
     }
   } catch (error) {
     console.error(`NPC conversation failed (${npc1.name} <-> ${npc2.name}):`, error)
@@ -285,6 +299,26 @@ function applyConversationResult(result: NpcConversationResult, world: WorldStat
       { trust: delta2, affection: Math.round(delta2 * 0.5) },
       result.npc2Takeaway.knowledge || undefined
     )
+  }
+
+  // Apply conversation outcomes
+  if (result.outcome) {
+    // Agreement between NPCs
+    if (result.outcome.agreement_reached) {
+      addNpcAgreement(result.npc1Id, result.npc2Id, result.outcome.agreement_reached, result.tick)
+      addNpcAgreement(result.npc2Id, result.npc1Id, result.outcome.agreement_reached, result.tick)
+    }
+
+    // Item transfer
+    if (result.outcome.item_transferred) {
+      const from = result.outcome.item_transferred.from
+      const to = result.outcome.item_transferred.to
+      const fromNpc = [npc1, npc2].find((n) => n.name.toLowerCase().includes(from.toLowerCase()) || from.toLowerCase().includes(n.name.split(' ')[0].toLowerCase()))
+      const toNpc = [npc1, npc2].find((n) => n.name.toLowerCase().includes(to.toLowerCase()) || to.toLowerCase().includes(n.name.split(' ')[0].toLowerCase()))
+      if (fromNpc && toNpc) {
+        transferItem(fromNpc.id, toNpc.id, result.outcome.item_transferred.item)
+      }
+    }
   }
 }
 
