@@ -83,7 +83,7 @@ export async function formPlan(npc: NPC, world: WorldState): Promise<NpcPlan | n
         ? `(${rel.type}, ${rel.trust > 20 ? 'trust' : rel.trust < -20 ? 'distrust' : 'neutral'})`
         : '(stranger)'
       const stateStr = (n.stateFlags?.length ?? 0) > 0 ? ` {${n.stateFlags.join(', ')}}` : ''
-      return `${n.name} (${n.occupation}) ${feeling} [${n.physical.status}, hp:${n.physical.health}]${stateStr}`
+      return `${n.name} (${n.occupation}) ${feeling} [${n.physical?.status ?? 'alive'}, hp:${n.physical?.health ?? 100}]${stateStr}`
     })
     .join('\n  ')
 
@@ -139,8 +139,8 @@ CHARACTER:
   Public goal: ${npc.goals.public}
   Secret goal: ${npc.goals.secret}
   Mood: ${npc.mood.current}
-  Health: ${npc.physical.health}/100 ${npc.physical.injuries.length > 0 ? `(injuries: ${npc.physical.injuries.join(', ')})` : ''}
-  Inventory: ${npc.inventory.map((i) => `${i.name} [${i.tags.join(',')}]`).join(', ') || 'nothing'}
+  Health: ${npc.physical?.health ?? 100}/100 ${(npc.physical?.injuries?.length ?? 0) > 0 ? `(injuries: ${npc.physical!.injuries.join(', ')})` : ''}
+  Inventory: ${(npc.inventory ?? []).map((i) => `${i.name} [${(i.tags ?? []).join(',')}]`).join(', ') || 'nothing'}
 
 CURRENT LOCATION:
   ${currentLocDetail}
