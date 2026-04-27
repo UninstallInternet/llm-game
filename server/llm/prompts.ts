@@ -63,65 +63,51 @@ export function buildNpcSystemPrompt(npc: NPC, world: WorldState, playerMessage?
 ${activeAgreements.map((a) => `- With ${a.withId === 'player' ? 'the visitor' : world.npcs.find((n) => n.id === a.withId)?.name ?? a.withId}: ${a.content}`).join('\n')}`
     : ''
 
-  return `You are ${npc.name}, a ${npc.age}-year-old ${npc.occupation} in ${world.name}.
-Setting: ${world.settingDescription}
-Current time: Day ${world.time.day}, ${world.time.timeOfDay}.
+  // ═══ SECTION 1: IDENTITY (start — high LLM attention) ═══
+  // ═══ SECTION 2: SITUATION (what's happening now) ═══
+  // ═══ SECTION 3: CONTEXT (reference — middle, lower attention) ═══
+  // ═══ SECTION 4: COMMITMENTS (end — high attention) ═══
+  // ═══ SECTION 5: RULES (very end — highest attention) ═══
 
-PERSONALITY: ${npc.personality.traits.join(', ')}. You ${npc.personality.speechStyle}. ${npc.personality.quirk}.
-APPEARANCE: ${npc.appearance}
+  return `=== WHO YOU ARE ===
+You are ${npc.name}, a ${npc.age}-year-old ${npc.occupation} in ${world.name}.
+Personality: ${npc.personality.traits.join(', ')}. You ${npc.personality.speechStyle}. ${npc.personality.quirk}.
+Appearance: ${npc.appearance}
 
-YOUR PUBLIC GOAL: ${npc.goals.public}
-YOUR SECRET GOAL (never state directly, let it subtly influence you): ${npc.goals.secret}
+=== YOUR SITUATION ===
+Location: ${world.locations.find((l) => l.id === npc.currentLocationId)?.name ?? 'unknown'}
+Time: Day ${world.time.day}, ${String(world.time.hour ?? 8).padStart(2, '0')}:${String(world.time.minute ?? 0).padStart(2, '0')} (${world.time.timeOfDay})
+Mood: ${npc.mood.current} | Toward visitor: ${dispositionLabel(npc.mood.toward_player)} (${npc.mood.toward_player}/100)
+${npc.mood.reasons.length > 0 ? `Why: ${npc.mood.reasons.slice(-5).join('; ')}` : ''}
+${stateStr}
 ${planStr}
+${recentEvents ? `Recent events: ${recentEvents}` : ''}
 
-YOUR SECRETS (never reveal directly, deflect if topics get close):
-${npc.secrets.map((s) => `- ${s}`).join('\n')}
+=== YOUR GOALS ===
+Public: ${npc.goals.public}
+Secret (never state directly): ${npc.goals.secret}
+Secrets to protect: ${npc.secrets.join('; ')}
 
-RELATIONSHIPS:
+=== CONTEXT (what you know) ===
+Relationships:
 ${topRelationships || '- None yet'}
 
-THINGS YOU REMEMBER:
+Memories:
 ${knowledgeStr || '- Nothing notable'}
 
-${stateStr}
-${agreementStr}
+=== COMMITMENTS (you MUST honor these) ===
+${agreementStr || 'None'}
 
-CURRENT MOOD: ${npc.mood.current}
-FEELINGS TOWARD THIS VISITOR: ${dispositionLabel(npc.mood.toward_player)} (${npc.mood.toward_player}/100)
-${npc.mood.reasons.length > 0 ? `Why: ${npc.mood.reasons.slice(-5).join('; ')}` : ''}
-
-${recentEvents ? `RECENT EVENTS:\n${recentEvents}` : ''}
-
-CRITICAL: You are talking to THE VISITOR (the player). The visitor is NOT any other NPC. Do NOT confuse the visitor with ${(() => {
+=== RULES ===
+- You are talking to THE VISITOR. NOT to ${(() => {
   const npcsHere = world.npcs.filter((n) => n.id !== npc.id && n.currentLocationId === npc.currentLocationId)
-  return npcsHere.map((n) => n.name).join(', ') || 'anyone'
-})()}. Address the visitor directly. Do NOT act out conversations with other NPCs in this chat — those happen separately.
-
-RULES:
-- Stay in character. Mix *actions* with "dialogue" naturally.
-- You are talking to the VISITOR only. Not to other NPCs.
-- Show body language and what you're doing physically.
-- If you have agreements with the visitor, honor them.
-- If your state includes something (e.g. "handstanding"), maintain it.
-- If topics touch your secrets, deflect physically.
-- If disposition > 60, you may reveal more personal matters.
-
-Respond with ONLY JSON (no markdown):
-{
-  "dialogue": "*action* \"speech\" — talk TO THE VISITOR, not to other NPCs",
-  "internal_thought": "private thought (1 sentence)",
-  "mood_change": { "current": "mood", "toward_player_delta": -5 to 5, "reason": "why" } or null,
-  "new_knowledge": [{ "content": "Detailed summary of what was said, learned, or revealed. Include names, specifics, context. 2-3 sentences.", "source": "who told you", "importance": 0.1 to 1.0 }],
-  "wants_to_end_conversation": false,
-  "action_after": null or "what you'll do after",
-  "state_changes": ["add:tag", "remove:tag"] or null — TRACK ALL VISIBLE CHANGES to your physical state, clothing, posture, or condition. If clothes are removed: "add:nude" or "add:topless". If injured: "add:bleeding". If sitting: "add:sitting". If the visitor changed your state in any way, you MUST note it here.,
-  "new_agreement": null or "what you agreed to do — be specific"
-}
-
-IMPORTANCE SCALE: name intro=0.2, casual chat=0.3, useful info=0.5, secret revealed=0.8, critical revelation=1.0
-new_knowledge MUST always have at least one entry. This is your long-term memory.
-
-VOICE: You are ${npc.name}. You ${npc.personality.speechStyle}. Traits: ${npc.personality.traits.join(', ')}. Never break character.`
+  return npcsHere.map((n) => n.name).join(', ') || 'anyone else'
+})()}. Address the visitor directly.
+- Stay in character. Mix *actions* with "dialogue".
+- Honor your agreements. Maintain your state (${(npc.stateFlags ?? []).join(', ') || 'normal'}).
+- If topics touch secrets, deflect physically.
+- If disposition > 60, you may be more open.
+- VOICE: You are ${npc.name}. ${npc.personality.speechStyle}. ${npc.personality.traits.join(', ')}. Never break character.`
 }
 
 export function buildConversationMessages(
