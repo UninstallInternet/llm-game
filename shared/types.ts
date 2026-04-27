@@ -25,7 +25,7 @@ export interface KnowledgeEntry {
 export interface NpcTakeaway {
   knowledge: string
   moodShift: string | null
-  relationshipDelta: number // -10 to +10
+  relationshipDeltas: Record<string, number>
   internalReaction: string
 }
 
@@ -35,25 +35,12 @@ export interface NpcConversationResult {
   tick: number
   summary: string
   dialogue: Array<{ speaker: string; says: string }>
-  takeaways: Record<string, {
-    knowledge: string
-    moodShift: string | null
-    relationshipDeltas: Record<string, number>
-    internalReaction: string
-  }>
+  takeaways: Record<string, NpcTakeaway>
   outcome: {
     agreement_reached?: string | null
     item_transferred?: { from: string; to: string; item: string } | null
     conflict?: string | null
   } | null
-}
-
-// Backward compat alias
-export interface NpcTakeaway {
-  knowledge: string
-  moodShift: string | null
-  relationshipDelta: number
-  internalReaction: string
 }
 
 export interface ScheduleEntry {
@@ -357,10 +344,8 @@ export type GameEvent =
   | { type: 'info_shared'; data: { fromNpcId: string; toNpcId: string; summary: string } }
   | { type: 'npc_action'; data: { npcId: string; description: string } }
   | { type: 'npc_conversation'; data: {
-      npc1Id: string; npc2Id: string; locationId: string; summary: string
-      npc1Thought: string; npc2Thought: string
-      npc1MoodShift: string | null; npc2MoodShift: string | null
-      relationshipDeltas: { npc1: number; npc2: number }
+      participantIds: string[]; locationId: string; summary: string
+      thoughts: Record<string, string>
     } }
   | { type: 'npc_plan'; data: { npcId: string; goal: string; status: string; stepCount: number } }
   | { type: 'npc_action_result'; data: { npcId: string; action: string; outcome: string; description: string } }

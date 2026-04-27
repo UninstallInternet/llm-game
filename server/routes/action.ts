@@ -203,7 +203,10 @@ actionRoutes.post('/', async (req, res) => {
     const npcsAtLocation = world.npcs.filter((n) => n.currentLocationId === player.currentLocationId)
     const mentionedNpcs = npcsAtLocation.filter((n) => {
       const firstName = n.name.split(' ')[0].toLowerCase()
-      return actionLower.includes(firstName) || actionLower.includes(n.name.toLowerCase())
+      if (firstName.length < 3) return actionLower.includes(n.name.toLowerCase())
+      // Word boundary match to avoid "Al" matching "steal"
+      const firstNamePattern = new RegExp(`\\b${firstName}\\b`)
+      return firstNamePattern.test(actionLower) || actionLower.includes(n.name.toLowerCase())
     })
 
     if (mentionedNpcs.length >= 2) {

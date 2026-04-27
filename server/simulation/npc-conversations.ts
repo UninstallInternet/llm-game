@@ -264,10 +264,10 @@ function applyGroupResult(result: NpcConversationResult, world: WorldState): voi
       }
     }
 
-    // Mark related plan steps as completed
+    // Mark related plan steps as completed — immutably
     if (npc.activePlan?.status === 'active' && result.outcome) {
-      for (const step of npc.activePlan.steps) {
-        if (step.status !== 'active') continue
+      const newSteps = npc.activePlan.steps.map((step) => {
+        if (step.status !== 'active') return step
         const matchesParticipant = result.participantIds.some((pid) => {
           const pnpc = world.npcs.find((n) => n.id === pid)
           if (!pnpc || pnpc.id === npcId) return false
@@ -275,16 +275,24 @@ function applyGroupResult(result: NpcConversationResult, world: WorldState): voi
           return step.target.toLowerCase().includes(firstName) || step.description.toLowerCase().includes(firstName)
         })
         if (matchesParticipant) {
-          step.status = 'completed'
-          step.result = `Group conversation: ${result.summary.slice(0, 60)}`
+          return { ...step, status: 'completed' as const, result: `Group conversation: ${result.summary.slice(0, 60)}` }
         }
-      }
-      const next = npc.activePlan.steps.find((s) => s.status === 'pending')
-      if (next) next.status = 'active'
-      else if (npc.activePlan.steps.every((s) => s.status !== 'pending' && s.status !== 'active')) {
-        npc.activePlan.status = 'completed'
-      }
-      updateNpcPlan(npcId, npc.activePlan)
+        return step
+      })
+      // Advance to next pending step
+      const hasActive = newSteps.some((s) => s.status === 'active')
+      const finalSteps = hasActive ? newSteps : newSteps.map((s, i) => {
+        if (s.status === 'pending' && !newSteps.slice(0, i).some((prev) => prev.status === 'pending')) {
+          return { ...s, status: 'active' as const }
+        }
+        return s
+      })
+      const allDone = finalSteps.every((s) => s.status !== 'pending' && s.status !== 'active')
+      updateNpcPlan(npcId, {
+        ...npc.activePlan,
+        steps: finalSteps,
+        status: allDone ? 'completed' : npc.activePlan.status,
+      })
     }
   }
 
@@ -346,15 +354,12 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
       broadcastEvent({
         type: 'npc_conversation',
         data: {
-          npc1Id: conv.participantIds[0],
-          npc2Id: conv.participantIds[1],
+          participantIds: conv.participantIds,
           locationId: conv.locationId,
           summary: roundSummary || parsed.summary,
-          npc1Thought: Object.values(parsed.takeaways ?? {})[0]?.internal_reaction ?? '',
-          npc2Thought: Object.values(parsed.takeaways ?? {})[1]?.internal_reaction ?? '',
-          npc1MoodShift: null,
-          npc2MoodShift: null,
-          relationshipDeltas: { npc1: 0, npc2: 0 },
+          thoughts: Object.fromEntries(
+            Object.entries(parsed.takeaways ?? {}).map(([k, v]) => [k, v.internal_reaction ?? ''])
+          ),
         },
       })
 
@@ -414,15 +419,12 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
     broadcastEvent({
       type: 'npc_conversation',
       data: {
-        npc1Id: group[0].id,
-        npc2Id: group.length > 1 ? group[1].id : group[0].id,
+        participantIds: group.map((n) => n.id),
         locationId: group[0].currentLocationId,
         summary: roundSummary || parsed.summary,
-        npc1Thought: Object.values(parsed.takeaways ?? {})[0]?.internal_reaction ?? '',
-        npc2Thought: Object.values(parsed.takeaways ?? {})[1]?.internal_reaction ?? '',
-        npc1MoodShift: null,
-        npc2MoodShift: null,
-        relationshipDeltas: { npc1: 0, npc2: 0 },
+        thoughts: Object.fromEntries(
+          Object.entries(parsed.takeaways ?? {}).map(([k, v]) => [k, v.internal_reaction ?? ''])
+        ),
       },
     })
 

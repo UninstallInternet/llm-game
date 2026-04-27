@@ -77,11 +77,9 @@ export function DebugPanel() {
 
 function DebugEntryCard({ entry }: { entry: DebugEntry }) {
   if (entry.type === 'npc_conversation') {
-    const npc1 = entry.data.npc1 as { name: string; thought: string; moodShift: string | null; relDelta: number }
-    const npc2 = entry.data.npc2 as { name: string; thought: string; moodShift: string | null; relDelta: number }
     const summary = entry.data.summary as string
+    const thoughts = entry.data.thoughts as Record<string, string> | undefined
 
-    // Parse pipe-separated dialogue lines
     const dialogueLines = summary.includes(' | ') ? summary.split(' | ') : null
 
     return (
@@ -104,10 +102,16 @@ function DebugEntryCard({ entry }: { entry: DebugEntry }) {
         ) : (
           <div className="text-gray-500 mb-1 text-[10px]">{summary}</div>
         )}
-        <div className="space-y-0.5 text-gray-400">
-          <NpcThoughtLine name={npc1.name} thought={npc1.thought} mood={npc1.moodShift} relDelta={npc1.relDelta} />
-          <NpcThoughtLine name={npc2.name} thought={npc2.thought} mood={npc2.moodShift} relDelta={npc2.relDelta} />
-        </div>
+        {thoughts && Object.entries(thoughts).length > 0 && (
+          <div className="space-y-0.5 text-gray-400 mt-1">
+            {Object.entries(thoughts).map(([name, thought]) => (
+              thought ? <div key={name} className="text-[10px] pl-2 border-l border-gray-700">
+                <span className="text-gray-300">{name}:</span>{' '}
+                <span className="text-purple-300">{thought}</span>
+              </div> : null
+            ))}
+          </div>
+        )}
       </div>
     )
   }
@@ -175,23 +179,6 @@ function DebugEntryCard({ entry }: { entry: DebugEntry }) {
   }
 
   return null
-}
-
-function NpcThoughtLine({ name, thought, mood, relDelta }: {
-  name: string; thought: string; mood: string | null; relDelta: number
-}) {
-  return (
-    <div className="pl-2 border-l border-gray-700">
-      <span className="text-gray-300">{name}:</span>{' '}
-      <span className="text-purple-300">{thought}</span>
-      {mood && <span className="text-gray-500"> [{mood}]</span>}
-      {relDelta !== 0 && (
-        <span className={relDelta > 0 ? ' text-green-500' : ' text-red-500'}>
-          {' '}rel:{relDelta > 0 ? '+' : ''}{relDelta}
-        </span>
-      )}
-    </div>
-  )
 }
 
 function FormattedText({ text }: { text: string }) {

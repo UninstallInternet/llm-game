@@ -591,9 +591,11 @@ export function dropItemAtLocation(ownerId: string, itemName: string): boolean {
 
   if (locationId) {
     item.locationId = locationId
-    const loc = currentWorld.locations.find((l) => l.id === locationId)
-    if (loc) {
-      loc.items = [...loc.items, item]
+    currentWorld = {
+      ...currentWorld,
+      locations: currentWorld.locations.map((l) =>
+        l.id === locationId ? { ...l, items: [...l.items, item] } : l
+      ),
     }
   }
 

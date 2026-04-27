@@ -168,21 +168,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
       case 'npc_conversation': {
         const d = event.data
-        const cn1 = state.world?.npcs.find((n) => n.id === d.npc1Id)
-        const cn2 = state.world?.npcs.find((n) => n.id === d.npc2Id)
-        if (cn1 && cn2) {
-          if (d.locationId === state.player?.currentLocationId) {
-            state.addEventLog(`${cn1.name} and ${cn2.name} are talking. ${d.summary}`)
-          }
+        const participantNames = (d.participantIds ?? [])
+          .map((id: string) => state.world?.npcs.find((n) => n.id === id)?.name ?? '?')
+          .filter((n: string) => n !== '?')
+
+        if (participantNames.length > 0 && d.locationId === state.player?.currentLocationId) {
+          state.addEventLog(`${participantNames.join(', ')} are talking. ${d.summary}`)
+        }
+
+        if (participantNames.length > 0) {
           state.addDebugEntry({
             tick: state.world?.currentTick ?? 0,
             timestamp: Date.now(),
             type: 'npc_conversation',
-            npcName: `${cn1.name} <-> ${cn2.name}`,
+            npcName: participantNames.join(' <-> '),
             data: {
               summary: d.summary,
-              npc1: { name: cn1.name, thought: d.npc1Thought, moodShift: d.npc1MoodShift, relDelta: d.relationshipDeltas.npc1 },
-              npc2: { name: cn2.name, thought: d.npc2Thought, moodShift: d.npc2MoodShift, relDelta: d.relationshipDeltas.npc2 },
+              thoughts: d.thoughts ?? {},
             },
           })
         }
