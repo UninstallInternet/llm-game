@@ -96,6 +96,19 @@ actionRoutes.post('/', async (req, res) => {
         })
         persistGame()
 
+        // Notify witnesses
+        for (const w of world.npcs.filter((n) => n.currentLocationId === player.currentLocationId && n.physical?.status === 'alive')) {
+          addNpcKnowledge(w.id, [{
+            id: uuid(),
+            content: `The visitor searched the ${unsearched.name} and found a ${item.name}.`,
+            source: 'witnessed',
+            confidence: 0.9,
+            importance: 0.4,
+            turnLearned: world.currentTick,
+            isSecret: false,
+          }])
+        }
+
         const response: ApiResponse<PlayerActionResponse> = {
           success: true,
           data: {
@@ -302,6 +315,22 @@ actionRoutes.post('/', async (req, res) => {
       action,
       result: `${result.outcome}: ${result.narrativeHint}`,
     })
+
+    // Notify NPCs at the same location about what the player did
+    const witnesses = world.npcs.filter((n) =>
+      n.currentLocationId === player.currentLocationId && n.physical?.status === 'alive'
+    )
+    for (const witness of witnesses) {
+      addNpcKnowledge(witness.id, [{
+        id: uuid(),
+        content: `The visitor ${action}. ${result.narrativeHint}`,
+        source: 'witnessed',
+        confidence: 0.9,
+        importance: 0.5,
+        turnLearned: world.currentTick,
+        isSecret: false,
+      }])
+    }
 
     onPlayerAction()
     persistGame()
