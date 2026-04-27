@@ -281,22 +281,57 @@ export function ChatPanel() {
             </div>
 
             {/* Narrative log */}
-            {narrativeLog.map((entry, i) => (
-              <div key={i} className={`flex ${entry.type === 'action' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-lg px-3 py-2 rounded-lg text-sm ${
-                  entry.type === 'action'
-                    ? 'bg-emerald-900/50 text-emerald-100'
-                    : entry.text.includes('[success]')
-                      ? 'bg-green-900/30 text-green-200 border border-green-800/30'
-                      : entry.text.includes('[fail]')
-                        ? 'bg-red-900/30 text-red-200 border border-red-800/30'
-                        : 'bg-gray-800 text-gray-200'
-                }`}>
-                  {entry.type === 'action' && <span className="text-xs text-emerald-400 block mb-1">You:</span>}
-                  {entry.text}
+            {narrativeLog.map((entry, i) => {
+              if (entry.type === 'action') {
+                return (
+                  <div key={i} className="flex justify-end">
+                    <div className="max-w-lg px-3 py-2 rounded-lg text-sm bg-emerald-900/50 text-emerald-100">
+                      <span className="text-xs text-emerald-400 block mb-1">You:</span>
+                      {entry.text}
+                    </div>
+                  </div>
+                )
+              }
+
+              // Split NPC responses into individual bubbles
+              // Format: "Name: *action* speech\n\nName: *action* speech"
+              const npcLines = entry.text.split(/\n\n+/).filter((l) => l.trim())
+              const hasMultipleNpcs = npcLines.length > 1 && npcLines.some((l) => /^[A-Z][a-z]+ ?[A-Z]?[a-z]*:/.test(l.trim()))
+
+              if (hasMultipleNpcs) {
+                return npcLines.map((line, li) => {
+                  const colonIdx = line.indexOf(':')
+                  const speaker = colonIdx > 0 && colonIdx < 30 ? line.slice(0, colonIdx).trim() : null
+                  const speech = speaker ? line.slice(colonIdx + 1).trim() : line.trim()
+
+                  return (
+                    <div key={`${i}-${li}`} className="flex justify-start">
+                      <div className="max-w-lg px-3 py-2 rounded-lg text-sm bg-gray-800 text-gray-200">
+                        {speaker && (
+                          <span className="text-xs text-amber-400 font-medium block mb-1">{speaker}</span>
+                        )}
+                        <FormattedText text={speech} />
+                      </div>
+                    </div>
+                  )
+                })
+              }
+
+              // Single result bubble
+              const isSuccess = entry.text.includes('[success]')
+              const isFail = entry.text.includes('[fail]')
+              return (
+                <div key={i} className="flex justify-start">
+                  <div className={`max-w-lg px-3 py-2 rounded-lg text-sm ${
+                    isSuccess ? 'bg-green-900/30 text-green-200 border border-green-800/30'
+                    : isFail ? 'bg-red-900/30 text-red-200 border border-red-800/30'
+                    : 'bg-gray-800 text-gray-200'
+                  }`}>
+                    <FormattedText text={entry.text} />
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
             {actionLoading && (
               <div className="bg-gray-800 px-3 py-2 rounded-lg text-sm text-gray-400 inline-block animate-pulse">
                 resolving...
