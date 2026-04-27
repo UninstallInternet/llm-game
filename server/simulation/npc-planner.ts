@@ -180,6 +180,8 @@ INSTRUCTIONS:
 - Be realistic about your skills. A scientist shouldn't plan to fight a guard.
 - If your plan involves another person, include a step to TALK to them first.
 - Your personality should influence your approach (cautious vs bold, honest vs deceptive).
+- NEVER create passive steps like "wait", "hope", "think about it", "see what happens". Every step must be a concrete ACTION you perform. If you need information from someone, go ask them. If you need to observe, go observe actively.
+- If a previous plan was completed, create a NEW plan that builds on what you achieved.
 
 Respond with ONLY JSON:
 {
