@@ -157,16 +157,28 @@ ALL KNOWN PEOPLE:
 ALL LOCATIONS:
 ${locationDetails}
 
+HOW THE WORLD WORKS:
+- You can SEARCH containers to find items. Workshops have tools, labs have equipment, kitchens have food/poison.
+- You NEED the right items for certain actions. To cut a door, you need a cutting tool. To poison someone, you need poison. PLAN to acquire items first.
+- When you TARGET another NPC (recruit, confront, charm, attack), you will actually talk to or interact with them. They will react and may resist.
+- WITNESSES at your location will see what you do. Plan stealthy actions when alone.
+- Actions have CONSEQUENCES: attacking hurts health, stealing damages trust, helping builds relationships.
+- You can GIVE items to other NPCs or DROP items at locations.
+- Travel between locations takes time. Plan your route.
+- High-security areas (level 3+) are hard to access without keycards or skills.
+
 INSTRUCTIONS:
 - Create a plan with 2-6 concrete steps to pursue your secret goal.
-- Actions can be ANYTHING plausible — both physical and social: search, travel, recruit, charm, intimidate, fight, sabotage, steal, heal, build, observe, confront, seduce, deceive, hide, share_info, use_item, barricade, sneak, repair, hack, lockpick, bribe, threaten, etc.
-- Choose the right action for the situation. Sometimes talking is the best move (recruiting an ally, extracting info). Sometimes physical action is needed (searching, breaking in, fighting). A good plan mixes both.
+- Actions can be ANYTHING: search, travel, recruit, charm, intimidate, fight, sabotage, steal, heal, build, observe, confront, seduce, deceive, hide, share_info, use_item, give_item, drop_item, barricade, sneak, repair, hack, lockpick, bribe, threaten, poison, ambush, etc.
+- THINK ABOUT PREREQUISITES: if you need an item, add a "search" step BEFORE the step that uses it.
+- Choose the right action for the situation. A good plan mixes social and physical actions.
 - Use real location IDs (loc_X) for travel targets.
 - Use real NPC names for social targets.
 - Consider who you trust, who might help, who might oppose you.
-- Consider what tools/items you have or could find.
+- Consider what items you already have and what you still need.
 - Consider security levels — high-security areas need preparation.
 - Be realistic about your skills. A scientist shouldn't plan to fight a guard.
+- If your plan involves another person, include a step to TALK to them first.
 - Your personality should influence your approach (cautious vs bold, honest vs deceptive).
 
 Respond with ONLY JSON:
