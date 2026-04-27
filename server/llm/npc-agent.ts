@@ -1,108 +1,39 @@
 import type { NPC, WorldState, ConversationTurn, NPCResponse } from '../../shared/types.js'
-import { llmChatCall } from './client.js'
+import { llmFunctionCall } from './client.js'
+import { NPC_RESPONSE_SCHEMA } from './schemas.js'
 import { buildConversationMessages } from './prompts.js'
 
-// Detect and truncate repetitive LLM output
-function derepeat(text: string): string {
-  if (text.length < 100) return text
-
-  // Find repeating phrases (min 20 chars)
-  for (let len = 20; len < Math.min(200, text.length / 2); len++) {
-    const phrase = text.slice(0, len)
-    const count = text.split(phrase).length - 1
-    if (count >= 3) {
-      // Found repetition — keep just the first occurrence + a bit more
-      const firstEnd = text.indexOf(phrase, len)
-      if (firstEnd > 0) {
-        return text.slice(0, firstEnd).trim()
-      }
-    }
-  }
-
-  // Also catch "key": "value" , "key": "value" patterns (malformed JSON in dialogue)
-  if ((text.match(/"\s*:\s*"/g) ?? []).length > 3) {
-    // Extract just the quoted strings
-    const quotes = text.match(/"([^"]{3,})"/g)
-    if (quotes && quotes.length > 0) {
-      const uniqueQuotes = [...new Set(quotes.map((q) => q.slice(1, -1)))]
-      return uniqueQuotes.slice(0, 3).join(' ')
-    }
-  }
-
-  return text
+interface RawFunctionResponse {
+  dialogue: string
+  internal_thought: string
+  mood_change: { current: string; toward_player_delta: number; reason: string } | null
+  new_knowledge: Array<{ content: string; source: string; importance: number }>
+  state_changes: string[] | null
+  new_agreement: string | null
+  action_after: string | null
+  wants_to_end_conversation: boolean
 }
 
-function parseNpcResponse(raw: string): NPCResponse {
-  let cleaned = raw.trim()
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+function inferMissingFields(
+  response: RawFunctionResponse,
+  playerMessage: string,
+): RawFunctionResponse {
+  // Ensure new_knowledge always has at least one entry
+  if (!response.new_knowledge || response.new_knowledge.length === 0) {
+    response.new_knowledge = [{
+      content: `The visitor said: "${playerMessage.slice(0, 100)}"`,
+      source: 'visitor',
+      importance: 0.3,
+    }]
   }
 
-  try {
-    const parsed = JSON.parse(cleaned)
-
-    // Extract dialogue — handle cases where LLM nests it oddly
-    let dialogue = ''
-    if (typeof parsed.dialogue === 'string') {
-      dialogue = parsed.dialogue
-    } else if (typeof parsed === 'object') {
-      // Try to find any string that looks like dialogue
-      dialogue = parsed.dialogue ?? parsed.response ?? parsed.text ?? ''
-      if (typeof dialogue !== 'string') dialogue = JSON.stringify(dialogue)
-    }
-
-    // Clean up dialogue — remove any JSON-like artifacts
-    dialogue = dialogue.replace(/^\s*\{.*?"dialogue"\s*:\s*"?/i, '')
-    dialogue = dialogue.replace(/"?\s*,\s*"internal_thought.*$/is, '')
-    dialogue = dialogue.trim()
-
-    // Detect and fix repetition (LLM sometimes loops the same phrase)
-    dialogue = derepeat(dialogue)
-
-    if (!dialogue) dialogue = '...'
-
-    return {
-      dialogue,
-      internal_thought: typeof parsed.internal_thought === 'string' ? parsed.internal_thought : '',
-      mood_change: parsed.mood_change && typeof parsed.mood_change === 'object' ? parsed.mood_change : null,
-      new_knowledge: Array.isArray(parsed.new_knowledge) ? parsed.new_knowledge : null,
-      wants_to_end_conversation: parsed.wants_to_end_conversation ?? false,
-      action_after: typeof parsed.action_after === 'string' ? parsed.action_after : null,
-      state_changes: Array.isArray(parsed.state_changes) ? parsed.state_changes : null,
-      new_agreement: typeof parsed.new_agreement === 'string' ? parsed.new_agreement : null,
-    }
-  } catch {
-    // JSON parse failed entirely — extract dialogue from raw text
-    // Try to find a dialogue field in the raw string
-    const dialogueMatch = raw.match(/"dialogue"\s*:\s*"((?:[^"\\]|\\.)*)"/s)
-    if (dialogueMatch) {
-      return {
-        dialogue: dialogueMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'),
-        internal_thought: '',
-        mood_change: null,
-        new_knowledge: null,
-        wants_to_end_conversation: false,
-        action_after: null,
-        state_changes: null,
-        new_agreement: null,
-      }
-    }
-
-    let fallback = raw.trim()
-    fallback = fallback.replace(/[{}[\]]/g, '').replace(/"dialogue"\s*:/gi, '').replace(/"internal_thought".*$/is, '').trim()
-    if (fallback.length > 500) fallback = fallback.slice(0, 500)
-
-    return {
-      dialogue: fallback || '...',
-      internal_thought: '',
-      mood_change: null,
-      new_knowledge: null,
-      wants_to_end_conversation: false,
-      action_after: null,
-      state_changes: null,
-      new_agreement: null,
-    }
+  // Clean up dialogue — remove any JSON artifacts
+  if (response.dialogue) {
+    response.dialogue = response.dialogue.trim()
+    if (!response.dialogue) response.dialogue = '...'
   }
+
+  return response
 }
 
 export async function conversate(
@@ -113,7 +44,41 @@ export async function conversate(
 ): Promise<NPCResponse> {
   const messages = buildConversationMessages(npc, world, history, playerMessage)
 
-  const rawResponse = await llmChatCall('conversation', messages, true)
+  try {
+    const result = await llmFunctionCall<RawFunctionResponse>(
+      'conversation',
+      messages,
+      NPC_RESPONSE_SCHEMA
+    )
 
-  return parseNpcResponse(rawResponse)
+    const cleaned = inferMissingFields(result, playerMessage)
+
+    return {
+      dialogue: cleaned.dialogue || '...',
+      internal_thought: cleaned.internal_thought || '',
+      mood_change: cleaned.mood_change || null,
+      new_knowledge: cleaned.new_knowledge,
+      wants_to_end_conversation: cleaned.wants_to_end_conversation ?? false,
+      action_after: cleaned.action_after || null,
+      state_changes: cleaned.state_changes || null,
+      new_agreement: cleaned.new_agreement || null,
+    }
+  } catch (error) {
+    console.error(`NPC conversation failed for ${npc.name}:`, error)
+    // Deterministic fallback — never lose the player's message
+    return {
+      dialogue: '*looks at you thoughtfully* "..."',
+      internal_thought: 'Something went wrong with my response.',
+      mood_change: null,
+      new_knowledge: [{
+        content: `The visitor said: "${playerMessage.slice(0, 100)}"`,
+        source: 'visitor',
+        importance: 0.3,
+      }],
+      wants_to_end_conversation: false,
+      action_after: null,
+      state_changes: null,
+      new_agreement: null,
+    }
+  }
 }

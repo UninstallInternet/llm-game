@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js'
 import { LLM_MODELS } from '../../shared/constants.js'
 
 const apiKey = process.env.OPENAI_API_KEY
@@ -18,6 +19,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
     ),
   ])
 }
+
+// ─── Raw text/JSON calls (kept for world gen + legacy) ───
 
 export async function llmCall(
   tier: ModelTier,
@@ -66,4 +69,55 @@ export async function llmChatCall(
   )
 
   return response.choices[0]?.message?.content ?? ''
+}
+
+// ─── Function calling — guaranteed schema compliance ───
+
+export interface FunctionSchema {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+export async function llmFunctionCall<T = Record<string, unknown>>(
+  tier: ModelTier,
+  messages: ChatCompletionMessageParam[],
+  schema: FunctionSchema
+): Promise<T> {
+  const model = LLM_MODELS[tier]
+
+  const response = await withTimeout(
+    openai.chat.completions.create({
+      model,
+      messages,
+      temperature: 0.8,
+      max_tokens: 2048,
+      tools: [{
+        type: 'function',
+        function: {
+          name: schema.name,
+          description: schema.description,
+          parameters: schema.parameters,
+        },
+      }],
+      tool_choice: { type: 'function', function: { name: schema.name } },
+    }),
+    25000,
+    tier
+  )
+
+  const toolCall = response.choices[0]?.message?.tool_calls?.[0]
+  if (!toolCall) {
+    throw new Error('No function call in response')
+  }
+
+  // Extract arguments from the tool call (handle different SDK versions)
+  const args = (toolCall as unknown as { function?: { arguments?: string } }).function?.arguments
+    ?? (toolCall as unknown as { arguments?: string }).arguments
+
+  if (!args) {
+    throw new Error('No arguments in function call')
+  }
+
+  return JSON.parse(args) as T
 }
