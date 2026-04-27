@@ -91,7 +91,7 @@ export async function formPlan(npc: NPC, world: WorldState): Promise<NpcPlan | n
   const locationDetails = world.locations.map((loc) => {
     const security = loc.securityLevel > 0 ? ` [SECURITY: ${loc.securityLevel}/5]` : ''
     const containers = loc.containers
-      .filter((c) => (c.searchCount ?? 0) === 0)
+      .filter((c) => (c.searchCount ?? 0) === 0 || (world.currentTick - (c.lastSearchTick ?? 0) >= 6))
       .map((c) => c.name)
     const containerStr = containers.length > 0 ? ` — searchable: ${containers.join(', ')}` : ''
     const fixtures = loc.fixtures.length > 0 ? ` — has: ${loc.fixtures.join(', ')}` : ''
@@ -126,7 +126,7 @@ export async function formPlan(npc: NPC, world: WorldState): Promise<NpcPlan | n
   const currentLocDetail = location
     ? `${location.name} (${location.type}). ${location.description}
   Fixtures: ${location.fixtures.join(', ') || 'none'}
-  Unsearched containers: ${location.containers.filter((c) => (c.searchCount ?? 0) === 0).map((c) => c.name).join(', ') || 'none'}
+  Unsearched containers: ${location.containers.filter((c) => (c.searchCount ?? 0) === 0 || (world.currentTick - (c.lastSearchTick ?? 0) >= 6)).map((c) => c.name).join(', ') || 'none'}
   Security level: ${location.securityLevel}/5`
     : 'unknown'
 
@@ -314,7 +314,7 @@ async function executeSearch(npc: NPC, step: PlanStep, world: WorldState): Promi
   }
 
   // Find an unsearched container
-  const unsearched = location.containers.find((c) => (c.searchCount ?? 0) === 0)
+  const unsearched = location.containers.find((c) => (c.searchCount ?? 0) === 0 || (world.currentTick - (c.lastSearchTick ?? 0) >= 6))
   if (!unsearched) {
     step.status = 'completed'
     step.result = 'Nothing more to search here'
@@ -330,7 +330,7 @@ async function executeSearch(npc: NPC, step: PlanStep, world: WorldState): Promi
     return { executed: true, description: `${npc.name} searches ${location.name} but finds nothing new` }
   }
 
-  const item = await searchContainer(npc, location, unsearched.id)
+  const item = await searchContainer(npc, location, unsearched.id, world.currentTick)
 
   if (item) {
     npc.inventory.push(item)
