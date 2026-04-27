@@ -191,7 +191,6 @@ function findConversationReasons(world: WorldState): ConversationReason[] {
 function selectConversationGroups(world: WorldState): NPC[][] {
   const reasons = findConversationReasons(world)
   if (reasons.length > 0) {
-    console.log(`[Convo] ${reasons.length} reasons found: ${reasons.map(r => r.reason.slice(0, 40)).join(' | ')}`)
   }
   const selected: NPC[][] = []
   const usedIds = new Set<string>()

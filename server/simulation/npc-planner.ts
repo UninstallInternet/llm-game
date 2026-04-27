@@ -727,9 +727,7 @@ export async function processNpcTurn(
   }
 
   if (activation >= ACTIVATION_THRESHOLD_HIGH) {
-    console.log(`[Activation] ${npc.name}: ${activation.toFixed(2)} >= ${ACTIVATION_THRESHOLD_HIGH} — forming plan...`)
     const plan = await formPlan(npc, world)
-    console.log(`[Activation] ${npc.name}: plan result: ${plan ? plan.goal.slice(0, 40) : 'FAILED'}`)
     if (plan) {
       updateNpcPlan(npc.id, plan)
       console.log(`[NPC Plan] ${npc.name}: "${plan.goal}" (${plan.steps.length} steps)`)
