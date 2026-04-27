@@ -79,12 +79,32 @@ function DebugEntryCard({ entry }: { entry: DebugEntry }) {
   if (entry.type === 'npc_conversation') {
     const npc1 = entry.data.npc1 as { name: string; thought: string; moodShift: string | null; relDelta: number }
     const npc2 = entry.data.npc2 as { name: string; thought: string; moodShift: string | null; relDelta: number }
+    const summary = entry.data.summary as string
+
+    // Parse pipe-separated dialogue lines
+    const dialogueLines = summary.includes(' | ') ? summary.split(' | ') : null
 
     return (
       <div className="bg-amber-900/15 border border-amber-800/30 rounded p-2">
         <div className="text-amber-400 font-medium mb-1">{entry.npcName}</div>
-        <div className="text-gray-500 mb-1">{entry.data.summary as string}</div>
-        <div className="space-y-1 text-gray-400">
+        {dialogueLines ? (
+          <div className="space-y-0.5 mb-1">
+            {dialogueLines.map((line, li) => {
+              const colonIdx = line.indexOf(':')
+              const speaker = colonIdx > 0 ? line.slice(0, colonIdx) : ''
+              const speech = colonIdx > 0 ? line.slice(colonIdx + 1).trim() : line
+              return (
+                <div key={li} className="text-gray-400 text-[10px]">
+                  <span className="text-gray-300 font-medium">{speaker}:</span>{' '}
+                  <FormattedText text={speech} />
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="text-gray-500 mb-1 text-[10px]">{summary}</div>
+        )}
+        <div className="space-y-0.5 text-gray-400">
           <NpcThoughtLine name={npc1.name} thought={npc1.thought} mood={npc1.moodShift} relDelta={npc1.relDelta} />
           <NpcThoughtLine name={npc2.name} thought={npc2.thought} mood={npc2.moodShift} relDelta={npc2.relDelta} />
         </div>
@@ -171,5 +191,18 @@ function NpcThoughtLine({ name, thought, mood, relDelta }: {
         </span>
       )}
     </div>
+  )
+}
+
+function FormattedText({ text }: { text: string }) {
+  const parts = text.split(/(\*[^*]+\*)/)
+  return (
+    <span>
+      {parts.map((part, i) =>
+        part.startsWith('*') && part.endsWith('*')
+          ? <em key={i} className="text-gray-500 not-italic">{part.slice(1, -1)}</em>
+          : <span key={i}>{part}</span>
+      )}
+    </span>
   )
 }
