@@ -14,6 +14,24 @@ import { onPlayerAction } from '../simulation/engine.js'
 
 export const actionRoutes = Router()
 
+// Track active group interaction sessions
+interface ActiveGroupSession {
+  participantIds: string[]
+  locationId: string
+  startedAtTick: number
+  history: Array<{ speaker: string; says: string }>
+}
+
+let activeGroupSession: ActiveGroupSession | null = null
+
+export function getActiveGroupSession(): ActiveGroupSession | null {
+  return activeGroupSession
+}
+
+export function clearActiveGroupSession(): void {
+  activeGroupSession = null
+}
+
 actionRoutes.post('/', async (req, res) => {
   try {
     if (!isGameActive()) {
@@ -37,6 +55,122 @@ actionRoutes.post('/', async (req, res) => {
     }
 
     const actionLower = action.toLowerCase()
+
+    // ── Check for active group session — continue it unless player explicitly leaves ──
+    const isEndingAction = actionLower.includes('leave') || actionLower.includes('stop') ||
+      actionLower.includes('end') || actionLower.includes('go to') || actionLower.includes('walk away') ||
+      actionLower.includes('move to') || actionLower.includes('search') || actionLower.includes('pick up')
+
+    if (activeGroupSession && !isEndingAction) {
+      // Continue the active group session — route to the same NPCs
+      const sessionNpcs = world.npcs.filter((n) => activeGroupSession!.participantIds.includes(n.id))
+      if (sessionNpcs.length > 0 && sessionNpcs[0].currentLocationId === player.currentLocationId) {
+        // Add player action to session history
+        activeGroupSession.history.push({ speaker: 'Visitor', says: action })
+
+        const { buildNpcSystemPrompt } = await import('../llm/prompts.js')
+        const { llmCall: llmCallFn } = await import('../llm/client.js')
+        const { updateNpcMoodGeneral: updateMood, addNpcAgreement: addAgreement, updateNpcStateFlags } = await import('../game/state.js')
+
+        const reactions: Array<{ npcName: string; response: string }> = []
+
+        // Recent session context for each NPC
+        const recentHistory = activeGroupSession.history.slice(-8)
+          .map((h) => `${h.speaker}: ${h.says}`).join('\n')
+
+        for (const npc of sessionNpcs) {
+          try {
+            const systemPrompt = buildNpcSystemPrompt(npc, world, action)
+            const otherNames = sessionNpcs.filter((n) => n.id !== npc.id).map((n) => n.name).join(', ')
+
+            const prompt = `You are in an ongoing group activity with the visitor${otherNames ? ` and ${otherNames}` : ''}.
+
+RECENT EXCHANGE:
+${recentHistory}
+
+The visitor just said/did: "${action}"
+
+React naturally — continue the activity. 1-3 sentences with *actions* and "dialogue".
+Do NOT speak for the visitor or other NPCs.
+
+JSON only:
+{
+  "reaction": "your response",
+  "internal_thought": "private thought",
+  "mood_change": { "current": "mood", "toward_player_delta": -5 to 5, "reason": "why" } or null,
+  "new_knowledge": [{ "content": "what happened", "source": "experienced", "importance": 0.3 }],
+  "state_changes": null or ["add:tag"],
+  "new_agreement": null or "agreed to"
+}`
+
+            const raw = await llmCallFn('conversation', systemPrompt, prompt, true)
+            let cleaned = raw.trim()
+            if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+            const parsed = JSON.parse(cleaned) as {
+              reaction: string; internal_thought?: string
+              mood_change?: { current: string; toward_player_delta: number; reason: string } | null
+              new_knowledge?: Array<{ content: string; source: string; importance?: number }> | null
+              state_changes?: string[] | null; new_agreement?: string | null
+            }
+
+            reactions.push({ npcName: npc.name, response: parsed.reaction || '...' })
+            activeGroupSession!.history.push({ speaker: npc.name, says: parsed.reaction || '...' })
+
+            if (parsed.mood_change) {
+              const { updateNpcMood } = await import('../game/state.js')
+              updateNpcMood(npc.id, parsed.mood_change.current, parsed.mood_change.toward_player_delta, parsed.mood_change.reason)
+            }
+            if (parsed.new_knowledge?.length) {
+              addNpcKnowledge(npc.id, parsed.new_knowledge.map((k) => ({
+                id: uuid(), content: k.content, source: k.source,
+                confidence: 0.9, importance: Math.max(0.1, Math.min(1.0, k.importance ?? 0.5)),
+                turnLearned: world.currentTick, isSecret: false,
+              })))
+            }
+            if (parsed.state_changes) updateNpcStateFlags(npc.id, parsed.state_changes)
+            if (parsed.new_agreement) addAgreement(npc.id, 'player', parsed.new_agreement, world.currentTick)
+          } catch (err) {
+            reactions.push({ npcName: npc.name, response: '*continues the activity*' })
+          }
+        }
+
+        onPlayerAction()
+        persistGame()
+
+        res.json({
+          success: true,
+          data: {
+            outcome: 'strong_success' as const,
+            narrative: reactions.map((r) => `${r.npcName}: ${r.response}`).join('\n\n'),
+            itemFound: null, healthDelta: 0, energyDelta: -3, injury: null,
+          },
+        } satisfies ApiResponse<PlayerActionResponse>)
+        return
+      } else {
+        // NPCs left or player moved — end the session
+        activeGroupSession = null
+      }
+    }
+
+    // End group session on explicit ending actions
+    if (activeGroupSession && isEndingAction) {
+      // Store the full session as a memory for all participants
+      const sessionSummary = activeGroupSession.history
+        .slice(-10)
+        .map((h) => `${h.speaker}: ${h.says.slice(0, 50)}`).join('; ')
+      for (const pid of activeGroupSession.participantIds) {
+        addNpcKnowledge(pid, [{
+          id: uuid(),
+          content: `Group activity with the visitor ended. What happened: ${sessionSummary}`,
+          source: 'experienced — session ended',
+          confidence: 1.0,
+          importance: 0.7,
+          turnLearned: world.currentTick,
+          isSecret: false,
+        }])
+      }
+      activeGroupSession = null
+    }
 
     // ── Search action: try to find items in containers ──
     if (actionLower.includes('search') || actionLower.includes('look through') || actionLower.includes('examine')) {
@@ -303,6 +437,17 @@ Respond with ONLY JSON:
       }
 
       const narrative = reactions.map((r) => `${r.npcName}: ${r.response}`).join('\n\n')
+
+      // Start a group session so follow-up actions stay with these NPCs
+      activeGroupSession = {
+        participantIds: mentionedNpcs.map((n) => n.id),
+        locationId: player.currentLocationId,
+        startedAtTick: world.currentTick,
+        history: [
+          { speaker: 'Visitor', says: action },
+          ...reactions.map((r) => ({ speaker: r.npcName, says: r.response })),
+        ],
+      }
 
       onPlayerAction()
       persistGame()
