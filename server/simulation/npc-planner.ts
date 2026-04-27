@@ -244,26 +244,15 @@ export async function executeCurrentStep(
     case 'search':
       result = await executeSearch(npc, currentStep, world)
       break
-    case 'attempt_objective':
-      result = await executeAttempt(npc, currentStep, world)
-      break
     case 'observe':
       result = executeObserve(npc, currentStep, world)
       break
-    case 'recruit':
-    case 'confront':
-    case 'share_info':
-      // These require conversations — mark as pending for conversation system
-      result = { executed: true, description: `${npc.name} wants to talk to someone about: ${currentStep.description}` }
-      currentStep.status = 'completed'
-      currentStep.result = 'Initiated social action'
-      break
-    case 'use_item':
-      result = await executeUseItem(npc, currentStep, world)
-      break
     default:
-      result = { executed: false, description: `Unknown action: ${currentStep.action}` }
-      currentStep.status = 'failed'
+      // UNIVERSAL HANDLER: route ALL other actions through Game Master
+      // This covers: recruit, confront, poison, steal, charm, sabotage,
+      // fight, heal, lockpick, use_item, share_info, and anything else
+      result = await executeAttempt(npc, currentStep, world)
+      break
   }
 
   // Advance to next step if current completed
@@ -419,6 +408,33 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
           affection: gmResult.effects.relationshipImpact,
           trust: gmResult.effects.relationshipImpact,
         })
+      }
+
+      // Target NPC becomes aware of what happened
+      addNpcKnowledge(targetNpc.id, [{
+        id: uuid(),
+        content: `${npc.name} ${result.outcome === 'failure' ? 'tried to' : 'successfully'} ${step.description} ${result.outcome !== 'failure' ? '— it worked' : '— but failed'}. ${result.narrativeHint}`,
+        source: 'experienced',
+        confidence: 1.0,
+        importance: 0.9,
+        turnLearned: world.currentTick,
+        isSecret: false,
+      }])
+
+      // Witnesses at the same location also learn about it
+      const witnesses = world.npcs.filter((n) =>
+        n.id !== npc.id && n.id !== targetNpc.id && n.currentLocationId === npc.currentLocationId
+      )
+      for (const witness of witnesses) {
+        addNpcKnowledge(witness.id, [{
+          id: uuid(),
+          content: `Witnessed ${npc.name} ${step.action} ${targetNpc.name}. ${result.narrativeHint}`,
+          source: 'witnessed',
+          confidence: 0.9,
+          importance: 0.7,
+          turnLearned: world.currentTick,
+          isSecret: false,
+        }])
       }
     }
   }

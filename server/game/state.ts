@@ -421,6 +421,97 @@ export function updateNpcPlan(npcId: string, plan: NPC['activePlan']): void {
   )
 }
 
+export function transferItem(fromId: string, toId: string, itemName: string): boolean {
+  if (!currentWorld) return false
+
+  // Find item in source inventory
+  const fromNpc = fromId === 'player' ? null : getNpc(fromId)
+  const fromInventory = fromId === 'player'
+    ? (currentPlayer?.inventory ?? [])
+    : (fromNpc?.inventory ?? [])
+
+  const itemIdx = fromInventory.findIndex((i) =>
+    i.name.toLowerCase().includes(itemName.toLowerCase()) ||
+    itemName.toLowerCase().includes(i.name.toLowerCase())
+  )
+  if (itemIdx === -1) return false
+
+  const item = fromInventory.splice(itemIdx, 1)[0]
+  item.ownerId = toId
+
+  // Add to target
+  if (toId === 'player' && currentPlayer) {
+    currentPlayer.inventory.push(item)
+  } else {
+    const toNpc = getNpc(toId)
+    if (toNpc) {
+      toNpc.inventory.push(item)
+      currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === toId ? { ...toNpc } : n))
+    }
+  }
+
+  // Update source
+  if (fromId !== 'player' && fromNpc) {
+    currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === fromId ? { ...fromNpc } : n))
+  }
+
+  return true
+}
+
+export function consumeItem(ownerId: string, itemName: string): boolean {
+  if (!currentWorld) return false
+
+  if (ownerId === 'player' && currentPlayer) {
+    const idx = currentPlayer.inventory.findIndex((i) =>
+      i.name.toLowerCase().includes(itemName.toLowerCase())
+    )
+    if (idx === -1) return false
+    currentPlayer.inventory.splice(idx, 1)
+    return true
+  }
+
+  const npc = getNpc(ownerId)
+  if (!npc) return false
+
+  const idx = npc.inventory.findIndex((i) =>
+    i.name.toLowerCase().includes(itemName.toLowerCase())
+  )
+  if (idx === -1) return false
+  npc.inventory.splice(idx, 1)
+  currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === ownerId ? { ...npc } : n))
+  return true
+}
+
+export function dropItemAtLocation(ownerId: string, itemName: string): boolean {
+  if (!currentWorld) return false
+
+  const npc = ownerId === 'player' ? null : getNpc(ownerId)
+  const inventory = ownerId === 'player'
+    ? (currentPlayer?.inventory ?? [])
+    : (npc?.inventory ?? [])
+
+  const idx = inventory.findIndex((i) =>
+    i.name.toLowerCase().includes(itemName.toLowerCase())
+  )
+  if (idx === -1) return false
+
+  const item = inventory.splice(idx, 1)[0]
+  const locationId = ownerId === 'player'
+    ? currentPlayer?.currentLocationId
+    : npc?.currentLocationId
+
+  if (locationId) {
+    const loc = currentWorld.locations.find((l) => l.id === locationId)
+    if (loc) {
+      item.locationId = locationId
+      item.ownerId = null
+      loc.items.push(item)
+    }
+  }
+
+  return true
+}
+
 export function applyPhysicalEffects(
   npcId: string,
   effects: {

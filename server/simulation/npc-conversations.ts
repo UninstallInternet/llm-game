@@ -85,7 +85,6 @@ function scorePair(a: NPC, b: NPC, world: WorldState): number {
 }
 
 function selectConversationPairs(world: WorldState): Array<[NPC, NPC]> {
-  // Group NPCs by location
   const byLocation = new Map<string, NPC[]>()
   for (const npc of world.npcs) {
     const group = byLocation.get(npc.currentLocationId) ?? []
@@ -93,10 +92,40 @@ function selectConversationPairs(world: WorldState): Array<[NPC, NPC]> {
     byLocation.set(npc.currentLocationId, group)
   }
 
-  // Score all co-located pairs (excluding busy NPCs)
+  const selected: Array<[NPC, NPC]> = []
+  const usedIds = new Set<string>()
+
+  // PRIORITY 1: Plan-driven pairs — NPCs whose plan targets someone in the same room
+  for (const npc of world.npcs) {
+    if (isNpcBusy(npc.id) || usedIds.has(npc.id)) continue
+    if (!npc.activePlan || npc.activePlan.status !== 'active') continue
+
+    const activeStep = npc.activePlan.steps.find((s) => s.status === 'active')
+    if (!activeStep) continue
+
+    // Is this step targeting another NPC by name or ID?
+    const targetNpc = world.npcs.find((n) =>
+      n.id !== npc.id &&
+      !isNpcBusy(n.id) &&
+      !usedIds.has(n.id) &&
+      n.currentLocationId === npc.currentLocationId &&
+      (n.id === activeStep.target ||
+       n.name.toLowerCase().includes(activeStep.target.toLowerCase()) ||
+       activeStep.target.toLowerCase().includes(n.name.toLowerCase()) ||
+       activeStep.description.toLowerCase().includes(n.name.toLowerCase()))
+    )
+
+    if (targetNpc && selected.length < MAX_NPC_CONVERSATIONS_PER_TICK) {
+      selected.push([npc, targetNpc])
+      usedIds.add(npc.id)
+      usedIds.add(targetNpc.id)
+    }
+  }
+
+  // PRIORITY 2: Score-based pairs (existing logic)
   const candidates: Array<{ pair: [NPC, NPC]; score: number }> = []
   for (const [_locId, npcs] of byLocation) {
-    const available = npcs.filter((n) => !isNpcBusy(n.id))
+    const available = npcs.filter((n) => !isNpcBusy(n.id) && !usedIds.has(n.id))
     if (available.length < 2) continue
     for (let i = 0; i < available.length; i++) {
       for (let j = i + 1; j < available.length; j++) {
@@ -108,11 +137,7 @@ function selectConversationPairs(world: WorldState): Array<[NPC, NPC]> {
     }
   }
 
-  // Sort by score descending, pick top pairs (no NPC in multiple)
   candidates.sort((a, b) => b.score - a.score)
-
-  const selected: Array<[NPC, NPC]> = []
-  const usedIds = new Set<string>()
 
   for (const { pair } of candidates) {
     if (selected.length >= MAX_NPC_CONVERSATIONS_PER_TICK) break

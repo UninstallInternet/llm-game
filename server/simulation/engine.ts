@@ -11,6 +11,7 @@ import { propagateInfo } from './info-share.js'
 import { checkEventTriggers } from './events.js'
 import { runNpcConversations } from './npc-conversations.js'
 import { processNpcTurn } from './npc-planner.js'
+import { runReflections } from './npc-reflection.js'
 import { MAX_SIMULATION_LLM_CALLS_PER_TICK } from '../../shared/constants.js'
 
 let actionCount = 0
@@ -100,7 +101,10 @@ async function runTick(): Promise<void> {
       }
     }
 
-    // 6. Check event triggers
+    // 6. NPC reflections (every 12 ticks)
+    await runReflections(updatedWorld)
+
+    // 7. Check event triggers
     const triggered = checkEventTriggers()
     for (const event of triggered) {
       broadcastEvent({ type: 'event_triggered', data: event })

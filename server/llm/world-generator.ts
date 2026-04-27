@@ -159,14 +159,14 @@ export async function generateWorld(
 SETTING: ${settingDescription}
 Generate EXACTLY ${locationCount} locations.
 
-Each location needs: id (loc_1, loc_2...), name, type, description (2-3 sentences), connections (bidirectional), isPublic, ownerId (null for now), tags, securityLevel (0-5), containers (searchable spots with expectedItemTypes), fixtures (immovable features).
+Each location needs: id (loc_1, loc_2...), name, type, description (2-3 sentences), connections (bidirectional), isPublic, ownerId (null for now), tags, securityLevel (0-5), containers (searchable spots with expectedItemTypes — generate 2-3 per location), fixtures (immovable features), and initialItems (2-3 items already visible on the ground — tools, documents, materials appropriate for the location type).
 
 Generate 2-3 factions, 1 mystery with clues, and 3-5 timed events.
 
 Respond with ONLY JSON:
 {
   "name": "Settlement name",
-  "locations": [{ "id": "loc_1", "name": "...", "type": "...", "description": "...", "connections": ["loc_2"], "isPublic": true, "ownerId": null, "tags": ["indoor"], "securityLevel": 0, "containers": [{"name": "tool chest", "expectedItemTypes": ["tools"], "searchDifficulty": 1}], "fixtures": ["workbench"] }],
+  "locations": [{ "id": "loc_1", "name": "...", "type": "...", "description": "...", "connections": ["loc_2"], "isPublic": true, "ownerId": null, "tags": ["indoor"], "securityLevel": 0, "containers": [{"name": "tool chest", "expectedItemTypes": ["tools"], "searchDifficulty": 1}], "fixtures": ["workbench"], "initialItems": [{"name": "wrench", "tags": ["tool"], "description": "A heavy adjustable wrench"}] }],
   "factions": [{ "id": "faction_1", "name": "...", "description": "...", "publicGoal": "...", "secretGoal": "..." }],
   "mysteries": [{ "name": "...", "description": "...", "resolution": "...", "clueLocationIds": ["loc_1"] }],
   "events": [{ "type": "crisis", "title": "...", "description": "...", "triggerDay": 2, "triggerTime": "morning", "involvedNpcIds": [], "consequences": ["..."] }]
@@ -213,6 +213,7 @@ NPC IDs should start at npc_${startId}. Each NPC needs:
 - 1-2 secrets, relationships with existing NPCs (trust/affection/respect/fear/significantMemories)
 - Faction assignment (or null), schedule across locations
 - Every NPC MUST have a SECRET GOAL that creates tension
+- Give each NPC 1-2 startingItems based on their occupation (mechanic has tools, scientist has lab equipment, guard has weapon, etc.)
 
 Respond with ONLY JSON:
 {
@@ -275,7 +276,14 @@ Respond with ONLY JSON:
       expectedItemTypes: c.expectedItemTypes ?? [],
     })),
     fixtures: loc.fixtures ?? [],
-    items: [],
+    items: ((loc as unknown as { initialItems?: Array<{ name: string; tags: string[]; description: string }> }).initialItems ?? []).map((item, i) => ({
+      id: `${loc.id}_item_${i}`,
+      name: item.name,
+      tags: item.tags ?? [],
+      locationId: loc.id,
+      ownerId: null,
+      description: item.description ?? '',
+    })),
   }))
 
   // Enforce bidirectional connections: if A -> B, then B -> A
