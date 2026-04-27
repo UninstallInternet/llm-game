@@ -686,14 +686,7 @@ export async function processNpcTurn(
     return { action: 'restrained', llmCalls: 0 }
   }
 
-  const activation = calculateActivation(npc, world)
-
-  // Low activation — do nothing
-  if (activation < ACTIVATION_THRESHOLD_LOW) {
-    return { action: 'routine', llmCalls: 0 }
-  }
-
-  // Has active plan — execute next step
+  // ALWAYS execute active plans — regardless of activation level
   if (npc.activePlan?.status === 'active') {
     const result = await executeCurrentStep(npc, world)
     if (result.executed) {
@@ -709,6 +702,13 @@ export async function processNpcTurn(
   }
 
   // High activation, no plan — form one
+  // No active plan — check if we should form one
+  const activation = calculateActivation(npc, world)
+
+  if (activation < ACTIVATION_THRESHOLD_LOW) {
+    return { action: 'routine', llmCalls: 0 }
+  }
+
   if (activation >= ACTIVATION_THRESHOLD_HIGH) {
     const plan = await formPlan(npc, world)
     if (plan) {
@@ -722,6 +722,5 @@ export async function processNpcTurn(
     }
   }
 
-  // Medium activation — internal monologue (no LLM, just a thought)
   return { action: 'thinking', llmCalls: 0 }
 }
