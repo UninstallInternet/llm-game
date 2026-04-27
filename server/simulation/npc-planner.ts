@@ -262,14 +262,21 @@ export async function executeCurrentStep(
     default: {
       // UNIVERSAL HANDLER: route ALL other actions through Game Master
       // First: if targeting an NPC, ensure we're at the same location
-      const targetNpcForStep = world.npcs.find((n) =>
-        n.id !== npc.id && (
+      const descLower = currentStep.description.toLowerCase()
+      const targetLower = currentStep.target.toLowerCase()
+      const targetNpcForStep = world.npcs.find((n) => {
+        if (n.id === npc.id) return false
+        const nameLower = n.name.toLowerCase()
+        const firstName = nameLower.split(' ')[0]
+        return (
           n.id === currentStep.target ||
-          n.name.toLowerCase().includes(currentStep.target.toLowerCase()) ||
-          currentStep.target.toLowerCase().includes(n.name.toLowerCase()) ||
-          currentStep.description.toLowerCase().includes(n.name.toLowerCase())
+          nameLower.includes(targetLower) ||
+          targetLower.includes(nameLower) ||
+          targetLower.includes(firstName) ||
+          descLower.includes(nameLower) ||
+          descLower.includes(firstName)
         )
-      )
+      })
 
       // Auto-travel to target NPC's location if not there
       if (targetNpcForStep && targetNpcForStep.currentLocationId !== npc.currentLocationId) {

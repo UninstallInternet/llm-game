@@ -109,10 +109,15 @@ function selectConversationPairs(world: WorldState): Array<[NPC, NPC]> {
       !isNpcBusy(n.id) &&
       !usedIds.has(n.id) &&
       n.currentLocationId === npc.currentLocationId &&
-      (n.id === activeStep.target ||
-       n.name.toLowerCase().includes(activeStep.target.toLowerCase()) ||
-       activeStep.target.toLowerCase().includes(n.name.toLowerCase()) ||
-       activeStep.description.toLowerCase().includes(n.name.toLowerCase()))
+      (() => {
+        const nameLower = n.name.toLowerCase()
+        const firstName = nameLower.split(' ')[0]
+        const tLower = activeStep.target.toLowerCase()
+        const dLower = activeStep.description.toLowerCase()
+        return n.id === activeStep.target ||
+          nameLower.includes(tLower) || tLower.includes(nameLower) || tLower.includes(firstName) ||
+          dLower.includes(nameLower) || dLower.includes(firstName)
+      })()
     )
 
     if (targetNpc && selected.length < MAX_NPC_CONVERSATIONS_PER_TICK) {
