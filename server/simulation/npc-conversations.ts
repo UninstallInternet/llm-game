@@ -75,12 +75,22 @@ function scorePair(a: NPC, b: NPC, world: WorldState): number {
   if (relAtoB?.type === 'rival' || relAtoB?.type === 'enemy') score += 0.1
   score += Math.random() * 0.05
 
+  // Count total conversations between this pair
+  const convCountA = a.knowledge.filter((k) => k.source.includes(b.name) && k.source.includes('conversation')).length
+  const convCountB = b.knowledge.filter((k) => k.source.includes(a.name) && k.source.includes('conversation')).length
+  const totalConvs = convCountA + convCountB
+
+  // Strong recency penalty — 12 tick cooldown
   const recentlySpoke = a.knowledge.some(
-    (k) => k.source.includes(b.name) && k.turnLearned >= world.currentTick - 4
+    (k) => k.source.includes(b.name) && k.turnLearned >= world.currentTick - 12
   ) || b.knowledge.some(
-    (k) => k.source.includes(a.name) && k.turnLearned >= world.currentTick - 4
+    (k) => k.source.includes(a.name) && k.turnLearned >= world.currentTick - 12
   )
-  if (recentlySpoke) score *= 0.05
+  if (recentlySpoke) score *= 0.02 // almost zero
+
+  // Diminishing returns — the more they've talked, the less value in talking again
+  if (totalConvs > 2) score *= Math.pow(0.5, totalConvs - 2) // halves each additional conversation
+  // After 5+ conversations, score is essentially zero unless plan-driven
 
   return score
 }
