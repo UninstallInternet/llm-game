@@ -223,25 +223,24 @@ actionRoutes.post('/', async (req, res) => {
     })
 
     if (mentionedNpcs.length >= 1) {
-      // Group/interactive activity with NPCs — generate real dialogue!
+      // Interactive group activity — NPCs react to the player's action ONLY
+      // The player stays in control and can continue interacting
       const { buildGroupConversationPrompt } = await import('../llm/prompts.js')
       const { llmCall: llmCallFn } = await import('../llm/client.js')
 
       const groupNames = mentionedNpcs.map((n) => n.name).join(', ')
-
-      // Build a group interaction prompt with the player's action as the initiating event
       const { system, user: baseUser } = buildGroupConversationPrompt(mentionedNpcs, world, true)
 
-      const activityPrompt = `${baseUser}
+      const reactionPrompt = `${baseUser}
 
-THE VISITOR initiates: "${action}"
+THE VISITOR just did: "${action}"
 
-Generate the group's reaction to this. Each NPC responds in character — with dialogue, actions, and emotions. The activity plays out based on their personalities, goals, relationships, and state. Some may be enthusiastic, others reluctant, others might use this as an opportunity.
+Generate ONLY the NPCs' reactions — do NOT generate any visitor/player dialogue or actions. The visitor will respond in their own time.
 
-Generate 4-8 lines of dialogue showing the NPCs reacting to and participating in the activity.`
+Each NPC reacts in character: some enthusiastic, others reluctant, others cautious. Show their personality through body language and short dialogue. 3-5 lines of NPC-ONLY reactions.`
 
       try {
-        const rawResponse = await llmCallFn('simulation', system, activityPrompt, true)
+        const rawResponse = await llmCallFn('simulation', system, reactionPrompt, true)
         let cleaned = rawResponse.trim()
         if (cleaned.startsWith('```')) {
           cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
@@ -253,18 +252,19 @@ Generate 4-8 lines of dialogue showing the NPCs reacting to and participating in
           takeaways?: Record<string, { knowledge: string; mood_shift: string | null; internal_reaction: string }>
         }
 
-        // Build narrative from NPC dialogue
-        const dialogueLines = (parsed.dialogue ?? [])
-          .map((d) => `**${d.speaker}**: ${d.says}`)
-          .join('\n')
-        const narrative = dialogueLines || parsed.summary || `${groupNames} participate in the activity.`
+        // Build narrative from NPC-only reactions
+        const npcReactions = (parsed.dialogue ?? [])
+          .filter((d) => d.speaker.toLowerCase() !== 'visitor' && d.speaker.toLowerCase() !== 'player')
+          .map((d) => `${d.speaker}: ${d.says}`)
+          .join('\n\n')
+        const narrative = npcReactions || parsed.summary || `${groupNames} react to your action.`
 
         // Give all participants knowledge
         for (const npc of mentionedNpcs) {
           const takeaway = parsed.takeaways?.[npc.name] ?? parsed.takeaways?.[npc.id]
           addNpcKnowledge(npc.id, [{
             id: uuid(),
-            content: takeaway?.knowledge ?? `Participated with the visitor in: ${action}. ${parsed.summary}`,
+            content: takeaway?.knowledge ?? `The visitor initiated: ${action}. ${parsed.summary}`,
             source: 'experienced with visitor',
             confidence: 1.0,
             importance: 0.8,
@@ -273,11 +273,10 @@ Generate 4-8 lines of dialogue showing the NPCs reacting to and participating in
           }])
           if (takeaway?.mood_shift) {
             const { updateNpcMoodGeneral: updateMood } = await import('../game/state.js')
-            updateMood(npc.id, takeaway.mood_shift, `after ${action} with the visitor`)
+            updateMood(npc.id, takeaway.mood_shift, `after ${action} with visitor`)
           }
         }
 
-        // Handle outcomes
         if (parsed.outcome?.agreement_reached) {
           const { addNpcAgreement: addAgreement } = await import('../game/state.js')
           for (const npc of mentionedNpcs) {
@@ -301,8 +300,7 @@ Generate 4-8 lines of dialogue showing the NPCs reacting to and participating in
         } satisfies ApiResponse<PlayerActionResponse>)
         return
       } catch (err) {
-        // Fallback to basic GM narration
-        console.error('Group activity dialogue failed:', err)
+        console.error('Group activity reaction failed:', err)
       }
     }
 
