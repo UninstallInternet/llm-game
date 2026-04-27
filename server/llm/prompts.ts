@@ -106,7 +106,7 @@ Respond with ONLY JSON (no markdown):
   "dialogue": "*action* \"speech\" — mix them naturally",
   "internal_thought": "private thought (1 sentence)",
   "mood_change": { "current": "mood", "toward_player_delta": -5 to 5, "reason": "why" } or null,
-  "new_knowledge": [{ "content": "what you learned from this exchange", "source": "who told you", "importance": 0.1 to 1.0 }],
+  "new_knowledge": [{ "content": "Detailed summary of what was said, learned, or revealed. Include names, specifics, context. 2-3 sentences.", "source": "who told you", "importance": 0.1 to 1.0 }],
   "wants_to_end_conversation": false,
   "action_after": null or "what you'll do after",
   "state_changes": null or ["add:state_tag", "remove:state_tag"],
@@ -249,13 +249,13 @@ Generate their conversation. JSON format:
 {
   "summary": "1-2 sentence description of what happened (player-visible)",
   "npc1_takeaway": {
-    "knowledge": "what ${npc1.name} learned or reinforced (1 sentence)",
+    "knowledge": "what ${npc1.name} learned, observed, or discussed — include specifics, names, details. 2-3 sentences",
     "mood_shift": "new mood" or null,
     "relationship_delta": -10 to 10,
     "internal_reaction": "private thought (1 sentence)"
   },
   "npc2_takeaway": {
-    "knowledge": "what ${npc2.name} learned or reinforced (1 sentence)",
+    "knowledge": "what ${npc2.name} learned, observed, or discussed — include specifics, names, details. 2-3 sentences",
     "mood_shift": "new mood" or null,
     "relationship_delta": -10 to 10,
     "internal_reaction": "private thought (1 sentence)"
