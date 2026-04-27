@@ -92,18 +92,23 @@ ${npc.mood.reasons.length > 0 ? `Why: ${npc.mood.reasons.slice(-5).join('; ')}` 
 
 ${recentEvents ? `RECENT EVENTS:\n${recentEvents}` : ''}
 
+CRITICAL: You are talking to THE VISITOR (the player). The visitor is NOT any other NPC. Do NOT confuse the visitor with ${(() => {
+  const npcsHere = world.npcs.filter((n) => n.id !== npc.id && n.currentLocationId === npc.currentLocationId)
+  return npcsHere.map((n) => n.name).join(', ') || 'anyone'
+})()}. Address the visitor directly. Do NOT act out conversations with other NPCs in this chat — those happen separately.
+
 RULES:
-- Stay in character always. Mix *actions* with "dialogue" naturally.
+- Stay in character. Mix *actions* with "dialogue" naturally.
+- You are talking to the VISITOR only. Not to other NPCs.
 - Show body language and what you're doing physically.
-- If you have a current plan, subtly reflect that you're busy or preoccupied.
-- If you have agreements, honor them in your behavior.
-- If your state includes something (e.g. "handstanding"), maintain that in your actions.
-- If topics touch your secrets, deflect physically (fidgeting, avoiding eye contact).
+- If you have agreements with the visitor, honor them.
+- If your state includes something (e.g. "handstanding"), maintain it.
+- If topics touch your secrets, deflect physically.
 - If disposition > 60, you may reveal more personal matters.
 
 Respond with ONLY JSON (no markdown):
 {
-  "dialogue": "*action* \"speech\" — mix them naturally",
+  "dialogue": "*action* \"speech\" — talk TO THE VISITOR, not to other NPCs",
   "internal_thought": "private thought (1 sentence)",
   "mood_change": { "current": "mood", "toward_player_delta": -5 to 5, "reason": "why" } or null,
   "new_knowledge": [{ "content": "Detailed summary of what was said, learned, or revealed. Include names, specifics, context. 2-3 sentences.", "source": "who told you", "importance": 0.1 to 1.0 }],
@@ -132,18 +137,21 @@ export function buildConversationMessages(
     { role: 'system', content: systemPrompt },
   ]
 
-  // If history is long, summarize older turns as context
-  const MAX_RECENT = 10
+  // Group history by sessions (detect gaps of 3+ ticks between messages)
+  const MAX_RECENT = 8
+  const recentHistory = history.slice(-MAX_RECENT)
+
+  // Add session boundary markers and summarize older turns
   if (history.length > MAX_RECENT) {
     const olderTurns = history.slice(0, -MAX_RECENT)
     const summaryParts: string[] = []
     for (const t of olderTurns) {
       const speaker = t.role === 'player' ? 'Visitor' : npc.name
-      summaryParts.push(`${speaker}: ${t.content.slice(0, 150)}`)
+      summaryParts.push(`${speaker}: ${t.content.slice(0, 120)}`)
     }
     messages.push({
       role: 'user',
-      content: `[Previous conversation summary - ${olderTurns.length} earlier exchanges:\n${summaryParts.slice(-8).join('\n')}\n...The conversation continues:]`,
+      content: `[Summary of earlier conversations with the visitor (NOT with other NPCs):\n${summaryParts.slice(-6).join('\n')}\n...New conversation:]`,
     })
     messages.push({
       role: 'assistant',
@@ -151,8 +159,21 @@ export function buildConversationMessages(
     })
   }
 
-  const recentHistory = history.slice(-MAX_RECENT)
+  let lastTick = -999
   for (const turn of recentHistory) {
+    // Insert session break if there's a significant time gap
+    if (turn.tick - lastTick > 3 && lastTick > 0) {
+      messages.push({
+        role: 'user',
+        content: `[Some time has passed. The visitor has returned for a new conversation.]`,
+      })
+      messages.push({
+        role: 'assistant',
+        content: `*looks up* (The visitor is back. This is a new conversation, not a continuation.)`,
+      })
+    }
+    lastTick = turn.tick
+
     if (turn.role === 'player') {
       messages.push({ role: 'user', content: turn.content })
     } else {
@@ -223,7 +244,7 @@ RULES:
 - Characters never reveal secret goals directly, but those goals color behavior.
 - Secret knowledge stays secret unless trust is very high.
 - The summary should describe what HAPPENED and what CHANGED.
-- Set concluded=false if the topic needs more discussion. Set true when resolved.
+- Set concluded=false UNLESS both parties have clearly reached an agreement or impasse. Don't rush to conclude — real negotiations take multiple rounds. Default to false.
 - Respond ONLY with JSON (no markdown, no fences).`
 
   const formatRel = (rel: typeof rel1to2, otherName: string) => {

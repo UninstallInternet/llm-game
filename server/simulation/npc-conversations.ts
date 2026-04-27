@@ -198,7 +198,7 @@ async function runConversationRound(
 
     // Include prior dialogue if this is a continuation
     const historyStr = priorDialogue.length > 0
-      ? `\n\nCONVERSATION SO FAR (continue from here, don't repeat):\n${priorDialogue.map((d) => `${d.speaker}: ${d.says}`).join('\n')}\n\nContinue the conversation — add 2-3 more exchanges. If the topic is resolved or both parties have said their piece, set concluded=true.`
+      ? `\n\nCONVERSATION SO FAR (continue from here — do NOT repeat what was already said):\n${priorDialogue.map((d) => `${d.speaker}: ${d.says}`).join('\n')}\n\nContinue with 3-5 NEW exchanges. Deepen the discussion — push for specifics, make requests, negotiate terms, reveal new information. The conversation should PROGRESS. Only set concluded=true if a clear agreement or impasse is reached.`
       : ''
 
     const fullUser = baseUser + historyStr
