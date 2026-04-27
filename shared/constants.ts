@@ -40,8 +40,8 @@ export const TOP_K_MEMORIES = 30
 export const MEMORY_WEIGHT_RELEVANCE = 3.0
 
 // ─── NPC Autonomy Config ───
-export const ACTIVATION_THRESHOLD_LOW = 0.3
-export const ACTIVATION_THRESHOLD_HIGH = 0.6
+export const ACTIVATION_THRESHOLD_LOW = 0.15
+export const ACTIVATION_THRESHOLD_HIGH = 0.35
 export const MAX_PLAN_STEPS = 8
 export const SEARCH_BASE_SUCCESS_RATE = 0.6
 export const SEARCH_SKILL_BONUS = 0.2

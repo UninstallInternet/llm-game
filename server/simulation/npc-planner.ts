@@ -42,8 +42,9 @@ export function calculateActivation(npc: NPC, world: WorldState): number {
     if (failedSteps.length > 0) activation += 0.2
   }
 
-  // No plan but has goals?
-  if (!npc.activePlan && npc.goals.secret) activation += 0.15
+  // No plan but has goals? (includes completed plans — should replan)
+  if (!npc.activePlan && npc.goals.secret) activation += 0.2
+  if (npc.activePlan?.status === 'completed' || npc.activePlan?.status === 'abandoned') activation += 0.25
 
   // Has active agreements to act on?
   const activeAgreements = (npc.agreements ?? []).filter((a) => a.active)
@@ -685,6 +686,11 @@ export async function processNpcTurn(
   // Restrained NPCs can only plan escape, not execute other steps
   if (npc.physical.status === 'restrained' && npc.activePlan?.goal?.toLowerCase().includes('escape') === false) {
     return { action: 'restrained', llmCalls: 0 }
+  }
+
+  // Clear completed/abandoned plans so NPCs can form new ones
+  if (npc.activePlan?.status === 'completed' || npc.activePlan?.status === 'abandoned') {
+    updateNpcPlan(npc.id, null)
   }
 
   // ALWAYS execute active plans — regardless of activation level
