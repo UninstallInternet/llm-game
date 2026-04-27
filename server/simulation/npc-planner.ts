@@ -305,9 +305,29 @@ export async function executeCurrentStep(
       break
     default: {
       // UNIVERSAL HANDLER: route ALL other actions through Game Master
-      // First: if targeting an NPC, ensure we're at the same location
       const descLower = currentStep.description.toLowerCase()
       const targetLower = currentStep.target.toLowerCase()
+
+      // Check if step mentions a LOCATION the NPC isn't at — auto-travel there
+      const mentionedLocation = world.locations.find((l) => {
+        if (l.id === npc.currentLocationId) return false
+        const locNameLower = l.name.toLowerCase()
+        return targetLower.includes(locNameLower) || descLower.includes(locNameLower) ||
+          l.id === currentStep.target
+      })
+      if (mentionedLocation) {
+        const fromLoc = npc.currentLocationId
+        moveNpc(npc.id, mentionedLocation.id)
+        broadcastEvent({
+          type: 'npc_moved',
+          data: { npcId: npc.id, fromLocationId: fromLoc, toLocationId: mentionedLocation.id },
+        })
+        result = { executed: true, description: `${npc.name} heads to ${mentionedLocation.name}` }
+        // Don't complete — actual action executes next tick at the new location
+        break
+      }
+
+      // Check if targeting an NPC — ensure at same location
       const targetNpcForStep = world.npcs.find((n) => {
         if (n.id === npc.id) return false
         const nameLower = n.name.toLowerCase()

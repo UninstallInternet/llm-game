@@ -29,7 +29,7 @@ export async function llmCall(
   jsonMode = false
 ): Promise<string> {
   const model = LLM_MODELS[tier]
-  const timeoutMs = tier === 'worldGen' ? 120000 : 25000
+  const timeoutMs = tier === 'worldGen' ? 120000 : 60000
 
   const response = await withTimeout(
     openai.chat.completions.create({
@@ -64,7 +64,7 @@ export async function llmChatCall(
       max_tokens: 2048,
       ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
     }),
-    25000,
+    60000,
     tier
   )
 
@@ -102,7 +102,7 @@ export async function llmFunctionCall<T = Record<string, unknown>>(
       }],
       tool_choice: { type: 'function', function: { name: schema.name } },
     }),
-    25000,
+    60000,
     tier
   )
 
