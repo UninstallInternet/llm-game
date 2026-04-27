@@ -53,57 +53,120 @@ export function injectPlayerMessage(locationId: string, message: string): boolea
 
 // ─── Group Selection ───
 
-function scorePair(a: NPC, b: NPC, world: WorldState): number {
-  let score = 0
-  const relAtoB = a.relationships.find((r) => r.targetNpcId === b.id)
-  const relBtoA = b.relationships.find((r) => r.targetNpcId === a.id)
-  const intensityA = relAtoB
-    ? (Math.abs(relAtoB.trust) + Math.abs(relAtoB.affection) + Math.abs(relAtoB.respect) + relAtoB.fear) / 400
-    : 0
-  const intensityB = relBtoA
-    ? (Math.abs(relBtoA.trust) + Math.abs(relBtoA.affection) + Math.abs(relBtoA.respect) + relBtoA.fear) / 400
-    : 0
-  score += ((intensityA + intensityB) / 2) * 0.25
+// ─── Need-Driven Conversation Selection ───
+// NPCs only talk when they have a REASON. No reason = no conversation.
 
-  const aTopics = new Set(a.knowledge.filter((k) => !k.isSecret).map((k) => k.content))
-  const bTopics = new Set(b.knowledge.filter((k) => !k.isSecret).map((k) => k.content))
-  const unique = [...aTopics].filter((t) => !bTopics.has(t)).length +
-    [...bTopics].filter((t) => !aTopics.has(t)).length
-  score += Math.min(unique / 10, 0.25)
+interface ConversationReason {
+  participants: NPC[]
+  reason: string  // injected into the conversation prompt
+  priority: number
+}
 
-  if (a.factionId && b.factionId && a.factionId !== b.factionId) score += 0.15
-  if (relAtoB?.type === 'rival' || relAtoB?.type === 'enemy') score += 0.1
-  score += Math.random() * 0.05
+function findConversationReasons(world: WorldState): ConversationReason[] {
+  const reasons: ConversationReason[] = []
+  const checked = new Set<string>() // avoid duplicate pairs
 
-  // Count total conversations between this pair
-  const convCountA = a.knowledge.filter((k) => k.source.includes(b.name) && k.source.includes('conversation')).length
-  const convCountB = b.knowledge.filter((k) => k.source.includes(a.name) && k.source.includes('conversation')).length
-  const totalConvs = convCountA + convCountB
+  for (const npc of world.npcs) {
+    if (npc.physical?.status !== 'alive' || isNpcBusy(npc.id)) continue
 
-  // Strong recency penalty — 12 tick cooldown
-  const recentlySpoke = a.knowledge.some(
-    (k) => k.source.includes(b.name) && k.turnLearned >= world.currentTick - 12
-  ) || b.knowledge.some(
-    (k) => k.source.includes(a.name) && k.turnLearned >= world.currentTick - 12
-  )
-  if (recentlySpoke) score *= 0.02 // almost zero
+    const coLocated = world.npcs.filter((n) =>
+      n.id !== npc.id && n.currentLocationId === npc.currentLocationId &&
+      n.physical?.status === 'alive' && !isNpcBusy(n.id)
+    )
 
-  // Diminishing returns — the more they've talked, the less value in talking again
-  if (totalConvs > 2) score *= Math.pow(0.5, totalConvs - 2) // halves each additional conversation
-  // After 5+ conversations, score is essentially zero unless plan-driven
+    for (const other of coLocated) {
+      const pairKey = [npc.id, other.id].sort().join('|')
+      if (checked.has(pairKey)) continue
+      checked.add(pairKey)
 
-  return score
+      // Check cooldown — talked in last 12 ticks? Skip unless plan-driven.
+      const recentlySpoke = npc.knowledge.some(
+        (k) => k.source.includes(other.name) && k.source.includes('conversation') && k.turnLearned >= world.currentTick - 12
+      )
+
+      // REASON 1: Plan step targets this NPC (highest priority)
+      const npcTargetsOther = npc.activePlan?.status === 'active' && npc.activePlan.steps.some((s) => {
+        if (s.status !== 'active') return false
+        const firstName = other.name.split(' ')[0].toLowerCase()
+        return s.target.toLowerCase().includes(firstName) || s.description.toLowerCase().includes(firstName)
+      })
+      const otherTargetsNpc = other.activePlan?.status === 'active' && other.activePlan.steps.some((s) => {
+        if (s.status !== 'active') return false
+        const firstName = npc.name.split(' ')[0].toLowerCase()
+        return s.target.toLowerCase().includes(firstName) || s.description.toLowerCase().includes(firstName)
+      })
+
+      if (npcTargetsOther || otherTargetsNpc) {
+        const initiator = npcTargetsOther ? npc : other
+        const step = initiator.activePlan!.steps.find((s) => s.status === 'active')!
+        reasons.push({
+          participants: [npc, other],
+          reason: `${initiator.name} needs to talk to ${initiator === npc ? other.name : npc.name} about: ${step.description}`,
+          priority: 10,
+        })
+        continue
+      }
+
+      // Skip all other reasons if recently spoke
+      if (recentlySpoke) continue
+
+      // REASON 2: One has NEW information the other doesn't know
+      const npcRecentKnowledge = npc.knowledge.filter(
+        (k) => k.turnLearned >= world.currentTick - 6 && !k.isSecret && k.importance >= 0.5
+      )
+      const otherRecentKnowledge = other.knowledge.filter(
+        (k) => k.turnLearned >= world.currentTick - 6 && !k.isSecret && k.importance >= 0.5
+      )
+      const npcHasNews = npcRecentKnowledge.some((k) =>
+        !other.knowledge.some((ok) => ok.content.slice(0, 30) === k.content.slice(0, 30))
+      )
+      const otherHasNews = otherRecentKnowledge.some((k) =>
+        !npc.knowledge.some((nk) => nk.content.slice(0, 30) === k.content.slice(0, 30))
+      )
+
+      if (npcHasNews || otherHasNews) {
+        reasons.push({
+          participants: [npc, other],
+          reason: `${npcHasNews ? npc.name : other.name} has new information to share`,
+          priority: 5,
+        })
+        continue
+      }
+
+      // REASON 3: Active event involves both
+      const sharedEvent = world.events.find((e) =>
+        !e.resolved && e.triggerDay <= world.time.day &&
+        e.involvedNpcIds.includes(npc.id) && e.involvedNpcIds.includes(other.id)
+      )
+      if (sharedEvent) {
+        reasons.push({
+          participants: [npc, other],
+          reason: `Both are involved in: ${sharedEvent.title}`,
+          priority: 4,
+        })
+        continue
+      }
+
+      // REASON 4: Never met before
+      const neverMet = !npc.knowledge.some((k) => k.source.includes(other.name))
+      if (neverMet) {
+        reasons.push({
+          participants: [npc, other],
+          reason: `First meeting between ${npc.name} and ${other.name}`,
+          priority: 3,
+        })
+        continue
+      }
+
+      // No reason → no conversation
+    }
+  }
+
+  return reasons.sort((a, b) => b.priority - a.priority)
 }
 
 function selectConversationGroups(world: WorldState): NPC[][] {
-  const byLocation = new Map<string, NPC[]>()
-  for (const npc of world.npcs) {
-    if (npc.physical?.status !== 'alive') continue
-    const group = byLocation.get(npc.currentLocationId) ?? []
-    group.push(npc)
-    byLocation.set(npc.currentLocationId, group)
-  }
-
+  const reasons = findConversationReasons(world)
   const selected: NPC[][] = []
   const usedIds = new Set<string>()
 
@@ -112,74 +175,16 @@ function selectConversationGroups(world: WorldState): NPC[][] {
     for (const id of conv.participantIds) usedIds.add(id)
   }
 
-  // PRIORITY 1: Plan-driven groups (NPC targeting another + shared context)
-  for (const npc of world.npcs) {
-    if (isNpcBusy(npc.id) || usedIds.has(npc.id)) continue
-    if (!npc.activePlan || npc.activePlan.status !== 'active') continue
+  for (const reason of reasons) {
+    if (selected.length >= MAX_NPC_CONVERSATIONS_PER_TICK) break
 
-    const activeStep = npc.activePlan.steps.find((s) => s.status === 'active')
-    if (!activeStep) continue
-
-    const descLower = activeStep.description.toLowerCase()
-    const tLower = activeStep.target.toLowerCase()
-
-    // Find target NPC
-    const targets = world.npcs.filter((n) => {
-      if (n.id === npc.id || isNpcBusy(n.id) || usedIds.has(n.id)) return false
-      if (n.currentLocationId !== npc.currentLocationId) return false
-      const nameLower = n.name.toLowerCase()
-      const firstName = nameLower.split(' ')[0]
-      return n.id === activeStep.target || tLower.includes(firstName) || descLower.includes(firstName)
-    })
-
-    if (targets.length > 0) {
-      // Check if other NPCs at the same location have related plans/agreements
-      const locationNpcs = (byLocation.get(npc.currentLocationId) ?? [])
-        .filter((n) => !usedIds.has(n.id) && !isNpcBusy(n.id) && n.id !== npc.id && !targets.some((t) => t.id === n.id))
-
-      const relatedNpcs = locationNpcs.filter((n) => {
-        // Has agreement with any of the core participants?
-        const hasAgreement = (n.agreements ?? []).some((a) =>
-          a.active && (a.withId === npc.id || targets.some((t) => a.withId === t.id))
-        )
-        // Has plan related to the topic?
-        const hasPlan = n.activePlan?.goal?.toLowerCase().includes(activeStep.target.toLowerCase().split(' ')[0]) ?? false
-        return hasAgreement || hasPlan
-      })
-
-      const group = [npc, ...targets.slice(0, 2), ...relatedNpcs.slice(0, MAX_GROUP_SIZE - 2 - targets.length)]
-        .slice(0, MAX_GROUP_SIZE)
-
-      if (group.length >= 2 && selected.length < MAX_NPC_CONVERSATIONS_PER_TICK) {
-        selected.push(group)
-        for (const n of group) usedIds.add(n.id)
-      }
-    }
-  }
-
-  // PRIORITY 2: Score-based pairs (existing logic)
-  for (const [_locId, npcs] of byLocation) {
-    const available = npcs.filter((n) => !isNpcBusy(n.id) && !usedIds.has(n.id))
+    const available = reason.participants.filter((n) => !usedIds.has(n.id))
     if (available.length < 2) continue
 
-    let bestPair: [NPC, NPC] | null = null
-    let bestScore = MIN_CONVERSATION_SCORE
+    selected.push(available.slice(0, MAX_GROUP_SIZE))
+    for (const n of available) usedIds.add(n.id)
 
-    for (let i = 0; i < available.length; i++) {
-      for (let j = i + 1; j < available.length; j++) {
-        const score = scorePair(available[i], available[j], world)
-        if (score > bestScore) {
-          bestScore = score
-          bestPair = [available[i], available[j]]
-        }
-      }
-    }
-
-    if (bestPair && selected.length < MAX_NPC_CONVERSATIONS_PER_TICK) {
-      selected.push(bestPair)
-      usedIds.add(bestPair[0].id)
-      usedIds.add(bestPair[1].id)
-    }
+    console.log(`[Convo Reason] ${available.map((n) => n.name).join(' + ')}: ${reason.reason}`)
   }
 
   return selected

@@ -261,6 +261,38 @@ export async function executeCurrentStep(
 
   let result: { executed: boolean; description: string }
 
+  // Reality check: if step targets an NPC who doesn't exist at the expected location, skip
+  if (currentStep.action !== 'travel' && currentStep.action !== 'search' && currentStep.action !== 'observe') {
+    const descLower = currentStep.description.toLowerCase()
+    const tLower = currentStep.target.toLowerCase()
+
+    // Check if step expects people who aren't here
+    const expectsPeople = descLower.includes('recruit') || descLower.includes('gather') ||
+      descLower.includes('find') || descLower.includes('meet') || descLower.includes('talk')
+    if (expectsPeople) {
+      const targetNpcsHere = world.npcs.filter((n) => {
+        if (n.id === npc.id) return false
+        if (n.currentLocationId !== npc.currentLocationId) return false
+        const firstName = n.name.split(' ')[0].toLowerCase()
+        return tLower.includes(firstName) || descLower.includes(firstName) || descLower.includes(n.occupation.toLowerCase())
+      })
+
+      // Nobody matching the description is here
+      if (targetNpcsHere.length === 0) {
+        // Check if we've been waiting here for 2+ ticks already
+        const waitAttempts = parseInt(currentStep.result?.match(/wait (\d+)/)?.[1] ?? '0', 10)
+        if (waitAttempts >= 2) {
+          currentStep.status = 'failed'
+          currentStep.result = 'Nobody matching the target is here — giving up'
+          updateNpcPlan(npc.id, npc.activePlan)
+          return { executed: false, description: `${npc.name} realizes nobody they need is here and moves on` }
+        }
+        currentStep.result = `wait ${waitAttempts + 1} — target not present`
+        return { executed: true, description: `${npc.name} waits for the right person but they're not here` }
+      }
+    }
+  }
+
   switch (currentStep.action) {
     case 'travel':
       result = executeTravel(npc, currentStep, world)
