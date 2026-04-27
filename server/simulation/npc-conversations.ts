@@ -84,14 +84,14 @@ function findConversationReasons(world: WorldState): ConversationReason[] {
         (k) => k.source.includes(other.name) && k.source.includes('conversation') && k.turnLearned >= world.currentTick - 12
       )
 
-      // REASON 1: Plan step targets this NPC (highest priority)
+      // REASON 1: Plan step targets this NPC (active OR pending — they intend to interact)
       const npcTargetsOther = npc.activePlan?.status === 'active' && npc.activePlan.steps.some((s) => {
-        if (s.status !== 'active') return false
+        if (s.status !== 'active' && s.status !== 'pending') return false
         const firstName = other.name.split(' ')[0].toLowerCase()
         return s.target.toLowerCase().includes(firstName) || s.description.toLowerCase().includes(firstName)
       })
       const otherTargetsNpc = other.activePlan?.status === 'active' && other.activePlan.steps.some((s) => {
-        if (s.status !== 'active') return false
+        if (s.status !== 'active' && s.status !== 'pending') return false
         const firstName = npc.name.split(' ')[0].toLowerCase()
         return s.target.toLowerCase().includes(firstName) || s.description.toLowerCase().includes(firstName)
       })
@@ -356,94 +356,17 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
   const world = getWorld()
   const results: NpcConversationResult[] = []
 
-  // 1. Continue ongoing conversations
-  for (let i = activeConversations.length - 1; i >= 0; i--) {
-    const conv = activeConversations[i]
-    const participants = conv.participantIds.map((id) => world.npcs.find((n) => n.id === id)).filter(Boolean) as NPC[]
-
-    if (participants.length < 2) {
-      for (const id of conv.participantIds) markNpcFree(id)
-      activeConversations.splice(i, 1)
-      continue
-    }
-
-    // Check they're all still at the same location
-    const allSameLocation = participants.every((p) => p.currentLocationId === conv.locationId)
-    if (!allSameLocation) {
-      for (const id of conv.participantIds) markNpcFree(id)
-      activeConversations.splice(i, 1)
-      continue
-    }
-
-    for (const p of participants) markNpcBusy(p.id)
-
-    const parsed = await runGroupConversationRound(participants, world, conv.history, conv.playerJoined)
-
-    if (parsed) {
-      for (const d of parsed.dialogue ?? []) conv.history.push(d)
-
-      const names = participants.map((p) => p.name).join(', ')
-      const roundSummary = (parsed.dialogue ?? []).map((d) => `${d.speaker}: ${d.says}`).join(' | ')
-      broadcastEvent({
-        type: 'npc_conversation',
-        data: {
-          participantIds: conv.participantIds,
-          locationId: conv.locationId,
-          summary: roundSummary || parsed.summary,
-          thoughts: Object.fromEntries(
-            Object.entries(parsed.takeaways ?? {}).map(([k, v]) => [k, v.internal_reaction ?? ''])
-          ),
-        },
-      })
-
-      conv.roundsRemaining--
-
-      if (parsed.concluded || conv.roundsRemaining <= 0) {
-        const result: NpcConversationResult = {
-          participantIds: conv.participantIds,
-          locationId: conv.locationId,
-          tick: world.currentTick,
-          summary: parsed.summary || `${names} finished their conversation.`,
-          dialogue: conv.history,
-          takeaways: Object.fromEntries(
-            Object.entries(parsed.takeaways ?? {}).map(([key, val]) => [
-              // Map NPC names to IDs
-              participants.find((p) => p.name === key)?.id ?? key,
-              {
-                knowledge: val.knowledge ?? '',
-                moodShift: val.mood_shift ?? null,
-                relationshipDeltas: val.relationship_deltas ?? {},
-                internalReaction: val.internal_reaction ?? '',
-              },
-            ])
-          ),
-          outcome: parsed.outcome ?? null,
-        }
-        applyGroupResult(result, world)
-        results.push(result)
-        console.log(`[Group Chat Done] ${names} (${conv.history.length} lines): ${result.summary.slice(0, 80)}`)
-
-        for (const id of conv.participantIds) markNpcFree(id)
-        activeConversations.splice(i, 1)
-      }
-    } else {
-      for (const id of conv.participantIds) markNpcFree(id)
-      activeConversations.splice(i, 1)
-    }
-  }
-
-  // 2. Start new conversations/groups
+  // Single-round conversations — always produce results immediately
   const groups = selectConversationGroups(world)
   for (const group of groups) {
     for (const npc of group) markNpcBusy(npc.id)
 
-    const topic = group[0].activePlan?.status === 'active' ? group[0].activePlan.goal : 'general interaction'
     const parsed = await runGroupConversationRound(group, world, [], false)
 
-    if (!parsed) {
-      for (const npc of group) markNpcFree(npc.id)
-      continue
-    }
+    // Always free participants immediately
+    for (const npc of group) markNpcFree(npc.id)
+
+    if (!parsed) continue
 
     const dialogueHistory = parsed.dialogue ?? []
     const names = group.map((n) => n.name).join(', ')
@@ -461,43 +384,30 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
       },
     })
 
-    if (parsed.concluded) {
-      const participantIds = group.map((n) => n.id)
-      const result: NpcConversationResult = {
-        participantIds,
-        locationId: group[0].currentLocationId,
-        tick: world.currentTick,
-        summary: parsed.summary,
-        dialogue: dialogueHistory,
-        takeaways: Object.fromEntries(
-          Object.entries(parsed.takeaways ?? {}).map(([key, val]) => [
-            group.find((p) => p.name === key)?.id ?? key,
-            {
-              knowledge: val.knowledge ?? '',
-              moodShift: val.mood_shift ?? null,
-              relationshipDeltas: val.relationship_deltas ?? {},
-              internalReaction: val.internal_reaction ?? '',
-            },
-          ])
-        ),
-        outcome: parsed.outcome ?? null,
-      }
-      applyGroupResult(result, world)
-      results.push(result)
-      console.log(`[Group Chat] ${names}: ${result.summary.slice(0, 80)}`)
-      for (const npc of group) markNpcFree(npc.id)
-    } else {
-      activeConversations.push({
-        participantIds: group.map((n) => n.id),
-        playerJoined: false,
-        locationId: group[0].currentLocationId,
-        startedAtTick: world.currentTick,
-        history: dialogueHistory,
-        roundsRemaining: MAX_CONVERSATION_ROUNDS - 1,
-        topic,
-      })
-      console.log(`[Group Chat Started] ${names}: "${topic}" (${MAX_CONVERSATION_ROUNDS} rounds max)`)
+    // ALWAYS apply results immediately — no multi-round waiting
+    const participantIds = group.map((n) => n.id)
+    const result: NpcConversationResult = {
+      participantIds,
+      locationId: group[0].currentLocationId,
+      tick: world.currentTick,
+      summary: parsed.summary,
+      dialogue: dialogueHistory,
+      takeaways: Object.fromEntries(
+        Object.entries(parsed.takeaways ?? {}).map(([key, val]) => [
+          group.find((p) => p.name === key)?.id ?? key,
+          {
+            knowledge: val.knowledge ?? '',
+            moodShift: val.mood_shift ?? null,
+            relationshipDeltas: val.relationship_deltas ?? {},
+            internalReaction: val.internal_reaction ?? '',
+          },
+        ])
+      ),
+      outcome: parsed.outcome ?? null,
     }
+    applyGroupResult(result, world)
+    results.push(result)
+    console.log(`[Convo] ${names}: ${result.summary.slice(0, 80)}`)
   }
 
   return results
