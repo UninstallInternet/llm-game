@@ -6,6 +6,7 @@ import type { ApiResponse, PlayerActionResponse } from '../../../shared/types'
 export function ChatPanel() {
   const [input, setInput] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [showPlayerDetail, setShowPlayerDetail] = useState(false)
   const [narrativeLog, setNarrativeLog] = useState<Array<{ type: 'action' | 'result' | 'system'; text: string }>>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const currentNpc = useGameStore((s) => s.currentNpc)
@@ -74,40 +75,69 @@ export function ChatPanel() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Player Status Bar — always visible */}
+      {/* Player Status Bar — always visible, expandable */}
       {player && (
-        <div className="px-4 py-2 border-b border-gray-800 bg-gray-950 text-xs shrink-0 space-y-1.5">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1">
-              <span className="text-gray-500">HP</span>
-              <div className="w-20 h-2 bg-gray-800 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${(player.physical?.health ?? 100) > 60 ? 'bg-green-500' : (player.physical?.health ?? 100) > 30 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                  style={{ width: `${player.physical?.health ?? 100}%` }}
-                />
+        <div className="border-b border-gray-800 bg-gray-950 text-xs shrink-0">
+          <button
+            onClick={() => setShowPlayerDetail(!showPlayerDetail)}
+            className="w-full px-4 py-2 text-left hover:bg-gray-900/50 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1">
+                <span className="text-gray-500">HP</span>
+                <div className="w-20 h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${(player.physical?.health ?? 100) > 60 ? 'bg-green-500' : (player.physical?.health ?? 100) > 30 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                    style={{ width: `${player.physical?.health ?? 100}%` }}
+                  />
+                </div>
+                <span className="text-gray-400">{player.physical?.health ?? 100}</span>
               </div>
-              <span className="text-gray-400">{player.physical?.health ?? 100}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-gray-500">EN</span>
-              <div className="w-16 h-2 bg-gray-800 rounded-full overflow-hidden">
-                <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${player.physical?.energy ?? 100}%` }} />
+              <div className="flex items-center gap-1">
+                <span className="text-gray-500">EN</span>
+                <div className="w-16 h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${player.physical?.energy ?? 100}%` }} />
+                </div>
+                <span className="text-gray-400">{player.physical?.energy ?? 100}</span>
               </div>
-              <span className="text-gray-400">{player.physical?.energy ?? 100}</span>
+              {(player.physical?.injuries?.length ?? 0) > 0 && (
+                <span className="text-orange-400">Hurt: {player.physical!.injuries.join(', ')}</span>
+              )}
+              <span className="text-gray-600 ml-auto">{showPlayerDetail ? '\u25B2' : '\u25BC'} {player.inventory?.length ?? 0} items</span>
             </div>
-            {(player.physical?.injuries?.length ?? 0) > 0 && (
-              <span className="text-orange-400">Hurt: {player.physical!.injuries.join(', ')}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">Inventory:</span>
-            {(player.inventory?.length ?? 0) === 0
-              ? <span className="text-gray-600 italic">empty</span>
-              : player.inventory!.map((item, i) => (
-                  <span key={i} className="bg-cyan-900/30 px-1.5 py-0.5 rounded text-cyan-300 border border-cyan-800/30">{item.name}</span>
-                ))
-            }
-          </div>
+          </button>
+
+          {/* Expanded player detail */}
+          {showPlayerDetail && (
+            <div className="px-4 pb-2 space-y-2 border-t border-gray-800/50">
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-gray-500">Inventory:</span>
+                {(player.inventory?.length ?? 0) === 0
+                  ? <span className="text-gray-600 italic">empty</span>
+                  : player.inventory!.map((item, i) => (
+                      <span key={i} className="bg-cyan-900/30 px-1.5 py-0.5 rounded text-cyan-300 border border-cyan-800/30" title={`${item.description} [${item.tags?.join(', ')}]`}>
+                        {item.name}
+                      </span>
+                    ))
+                }
+              </div>
+              <div className="text-gray-500">
+                Status: <span className="text-gray-300">{player.physical?.status ?? 'alive'}</span>
+                {' '}&middot;{' '}
+                Known NPCs: <span className="text-gray-300">{player.knownNpcIds?.length ?? 0}</span>
+                {' '}&middot;{' '}
+                Locations visited: <span className="text-gray-300">{player.knownLocationIds?.length ?? 0}</span>
+              </div>
+              {(player.actionLog?.length ?? 0) > 0 && (
+                <div>
+                  <span className="text-gray-500">Recent actions:</span>
+                  {player.actionLog!.slice(-3).map((a, i) => (
+                    <div key={i} className="text-gray-400 pl-2 text-[10px]">{a.action} &rarr; {a.result.slice(0, 60)}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
