@@ -69,7 +69,8 @@ actionRoutes.post('/', async (req, res) => {
         activeGroupSession.history.push({ speaker: 'Visitor', says: action })
 
         const { buildNpcSystemPrompt } = await import('../llm/prompts.js')
-        const { llmCall: llmCallFn } = await import('../llm/client.js')
+        const { llmFunctionCall } = await import('../llm/client.js')
+        const { NPC_REACTION_SCHEMA } = await import('../llm/schemas.js')
         const { updateNpcMoodGeneral: updateMood, addNpcAgreement: addAgreement, updateNpcStateFlags } = await import('../game/state.js')
 
         const reactions: Array<{ npcName: string; response: string }> = []
@@ -103,15 +104,16 @@ JSON only:
   "new_agreement": null or "agreed to"
 }`
 
-            const raw = await llmCallFn('conversation', systemPrompt, prompt, true)
-            let cleaned = raw.trim()
-            if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
-            const parsed = JSON.parse(cleaned) as {
+            const parsed = await llmFunctionCall<{
               reaction: string; internal_thought?: string
               mood_change?: { current: string; toward_player_delta: number; reason: string } | null
               new_knowledge?: Array<{ content: string; source: string; importance?: number }> | null
               state_changes?: string[] | null; new_agreement?: string | null
-            }
+            }>(
+              'conversation',
+              [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
+              NPC_REACTION_SCHEMA
+            )
 
             reactions.push({ npcName: npc.name, response: parsed.reaction || '...' })
             activeGroupSession!.history.push({ speaker: npc.name, says: parsed.reaction || '...' })
@@ -359,7 +361,8 @@ JSON only:
     if (mentionedNpcs.length >= 1) {
       // Each NPC gets their OWN LLM call with full personal context
       const { buildNpcSystemPrompt } = await import('../llm/prompts.js')
-      const { llmCall: llmCallFn } = await import('../llm/client.js')
+      const { llmFunctionCall } = await import('../llm/client.js')
+        const { NPC_REACTION_SCHEMA } = await import('../llm/schemas.js')
       const { updateNpcMoodGeneral: updateMood, addNpcAgreement: addAgreement } = await import('../game/state.js')
 
       const otherNpcNames = mentionedNpcs.map((n) => n.name).join(', ')
@@ -391,19 +394,18 @@ Respond with ONLY JSON:
   "new_agreement": null or "what you agreed to"
 }`
 
-          const rawResponse = await llmCallFn('conversation', systemPrompt, reactionPrompt, true)
-          let cleaned = rawResponse.trim()
-          if (cleaned.startsWith('```')) {
-            cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
-          }
-          const parsed = JSON.parse(cleaned) as {
+          const parsed = await llmFunctionCall<{
             reaction: string
             internal_thought?: string
             mood_change?: { current: string; toward_player_delta: number; reason: string } | null
             new_knowledge?: Array<{ content: string; source: string; importance?: number }> | null
             state_changes?: string[] | null
             new_agreement?: string | null
-          }
+          }>(
+            'conversation',
+            [{ role: 'system', content: systemPrompt }, { role: 'user', content: reactionPrompt }],
+            NPC_REACTION_SCHEMA
+          )
 
           reactions.push({ npcName: npc.name, response: parsed.reaction || '...' })
 

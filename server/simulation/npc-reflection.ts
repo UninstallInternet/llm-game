@@ -6,7 +6,8 @@ import {
   updateNpcPlan,
   isNpcBusy,
 } from '../game/state.js'
-import { llmCall } from '../llm/client.js'
+import { llmFunctionCall } from '../llm/client.js'
+import { REFLECTION_SCHEMA } from '../llm/schemas.js'
 import { getTopMemories } from '../game/state.js'
 import { broadcastEvent } from '../routes/events.js'
 import type { NPC, WorldState } from '../../shared/types.js'
@@ -88,19 +89,17 @@ Respond with ONLY JSON:
   "new_belief": "a conclusion I've drawn" or null
 }`
 
-  const raw = await llmCall('simulation', prompt, 'Reflect now.', true)
-  let cleaned = raw.trim()
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
-  }
-
-  const result = JSON.parse(cleaned) as {
+  const result = await llmFunctionCall<{
     reflection: string
     should_replan: boolean
     approach_player: boolean
     approach_reason: string | null
     new_belief: string | null
-  }
+  }>(
+    'simulation',
+    [{ role: 'system', content: prompt }, { role: 'user', content: 'Reflect now.' }],
+    REFLECTION_SCHEMA
+  )
 
   console.log(`[Reflect] ${npc.name}: ${result.reflection.slice(0, 80)}`)
 

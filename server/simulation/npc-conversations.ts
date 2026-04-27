@@ -12,7 +12,8 @@ import {
   markNpcBusy,
   markNpcFree,
 } from '../game/state.js'
-import { llmCall } from '../llm/client.js'
+import { llmFunctionCall } from '../llm/client.js'
+import { GROUP_CONVERSATION_SCHEMA } from '../llm/schemas.js'
 import { buildGroupConversationPrompt } from '../llm/prompts.js'
 import { broadcastEvent } from '../routes/events.js'
 import {
@@ -193,14 +194,6 @@ interface RawGroupResponse {
   }>
 }
 
-function parseGroupResponse(raw: string): RawGroupResponse {
-  let cleaned = raw.trim()
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
-  }
-  return JSON.parse(cleaned) as RawGroupResponse
-}
-
 async function runGroupConversationRound(
   participants: NPC[],
   world: WorldState,
@@ -215,8 +208,11 @@ async function runGroupConversationRound(
       : ''
 
     const fullUser = baseUser + historyStr
-    const rawResponse = await llmCall('simulation', system, fullUser, true)
-    return parseGroupResponse(rawResponse)
+    return await llmFunctionCall<RawGroupResponse>(
+      'simulation',
+      [{ role: 'system', content: system }, { role: 'user', content: fullUser }],
+      GROUP_CONVERSATION_SCHEMA
+    )
   } catch (error) {
     console.error(`Group conversation failed:`, error)
     return null

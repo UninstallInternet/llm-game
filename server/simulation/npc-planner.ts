@@ -9,7 +9,8 @@ import {
   updateNpcRelationship,
   updateNpcPlan,
 } from '../game/state.js'
-import { llmCall } from '../llm/client.js'
+import { llmFunctionCall } from '../llm/client.js'
+import { PLAN_SCHEMA } from '../llm/schemas.js'
 import { judgeAction, searchContainer } from '../llm/judge.js'
 import type { GameMasterResult } from '../llm/judge.js'
 import { generateDiscovery } from './discovery.js'
@@ -193,17 +194,15 @@ Respond with ONLY JSON:
 }`
 
   try {
-    const raw = await llmCall('simulation', prompt, 'Create a plan.', true)
-    let cleaned = raw.trim()
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
-    }
-
-    const parsed = JSON.parse(cleaned) as {
+    const parsed = await llmFunctionCall<{
       goal: string
       motivation: string
       steps: Array<{ action: string; target: string; description: string }>
-    }
+    }>(
+      'simulation',
+      [{ role: 'system', content: prompt }, { role: 'user', content: 'Create a plan.' }],
+      PLAN_SCHEMA
+    )
 
     const plan: NpcPlan = {
       id: uuid(),

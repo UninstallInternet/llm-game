@@ -145,3 +145,48 @@ export const REFLECTION_SCHEMA: FunctionSchema = {
     },
   },
 }
+
+export const GROUP_CONVERSATION_SCHEMA: FunctionSchema = {
+  name: 'group_conversation',
+  description: 'Generate multi-party NPC conversation with dialogue and per-participant takeaways',
+  parameters: {
+    type: 'object',
+    required: ['dialogue', 'summary', 'concluded', 'takeaways'],
+    properties: {
+      dialogue: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['speaker', 'says'],
+          properties: { speaker: { type: 'string' }, says: { type: 'string' } },
+        },
+      },
+      summary: { type: 'string' },
+      concluded: { type: 'boolean' },
+      outcome: {
+        type: ['object', 'null'],
+        properties: {
+          agreement_reached: { type: ['string', 'null'] },
+          item_transferred: {
+            type: ['object', 'null'],
+            properties: { from: { type: 'string' }, to: { type: 'string' }, item: { type: 'string' } },
+          },
+          conflict: { type: ['string', 'null'] },
+        },
+      },
+      takeaways: {
+        type: 'object',
+        additionalProperties: {
+          type: 'object',
+          required: ['knowledge', 'internal_reaction'],
+          properties: {
+            knowledge: { type: 'string' },
+            mood_shift: { type: ['string', 'null'] },
+            relationship_deltas: { type: 'object', additionalProperties: { type: 'number' } },
+            internal_reaction: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
+}
