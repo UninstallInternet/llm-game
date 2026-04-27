@@ -248,6 +248,13 @@ Personality: ${npc1.personality.traits.join(', ')}. ${npc1.personality.speechSty
 Goal: ${npc1.goals.public} (secret: ${npc1.goals.secret})
 Inventory: ${npc1.inventory.map((i) => i.name).join(', ') || 'nothing'}
 ${plan1}
+${(() => {
+  const agr = (npc1.agreements ?? []).filter((a) => a.active).map((a) => {
+    const other = a.withId === 'player' ? 'the visitor' : world.npcs.find((n) => n.id === a.withId)?.name ?? a.withId
+    return `- With ${other}: ${a.content}`
+  }).join('\n')
+  return agr ? `COMMITMENTS ${npc1.name} MUST act on:\n${agr}` : ''
+})()}
 Knows: ${k1 || 'nothing notable'}
 ${formatRel(rel1to2, npc2.name)}
 
@@ -257,6 +264,13 @@ Personality: ${npc2.personality.traits.join(', ')}. ${npc2.personality.speechSty
 Goal: ${npc2.goals.public} (secret: ${npc2.goals.secret})
 Inventory: ${npc2.inventory.map((i) => i.name).join(', ') || 'nothing'}
 ${plan2}
+${(() => {
+  const agr = (npc2.agreements ?? []).filter((a) => a.active).map((a) => {
+    const other = a.withId === 'player' ? 'the visitor' : world.npcs.find((n) => n.id === a.withId)?.name ?? a.withId
+    return `- With ${other}: ${a.content}`
+  }).join('\n')
+  return agr ? `COMMITMENTS ${npc2.name} MUST act on:\n${agr}` : ''
+})()}
 Knows: ${k2 || 'nothing notable'}
 ${formatRel(rel2to1, npc1.name)}
 
