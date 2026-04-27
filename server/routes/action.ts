@@ -222,49 +222,88 @@ actionRoutes.post('/', async (req, res) => {
       return firstNamePattern.test(actionLower) || actionLower.includes(n.name.toLowerCase())
     })
 
-    if (mentionedNpcs.length >= 2) {
-      // Group activity with multiple NPCs!
+    if (mentionedNpcs.length >= 1) {
+      // Group/interactive activity with NPCs — generate real dialogue!
+      const { buildGroupConversationPrompt } = await import('../llm/prompts.js')
+      const { llmCall: llmCallFn } = await import('../llm/client.js')
+
       const groupNames = mentionedNpcs.map((n) => n.name).join(', ')
-      const groupContext = mentionedNpcs.map((n) => {
-        return `${n.name} (${n.occupation}, mood: ${n.mood.current}${(n.stateFlags?.length ?? 0) > 0 ? `, state: ${n.stateFlags.join('/')}` : ''})`
-      }).join('\n')
 
-      const result = await judgeAction({
-        actor: { name: 'The player', occupation: 'Visitor', tags: ['general-knowledge'], health: player.physical?.health },
-        action: `Group activity with ${groupNames}: ${action}`,
-        target: { name: groupNames, tags: [] },
-        environment: { name: location.name, tags: location.tags },
-        context: `Player is doing a group activity with: ${groupContext}. Player inventory: ${(player.inventory ?? []).map((i) => i.name).join(', ') || 'nothing'}. Location: ${location.description}`,
-      })
+      // Build a group interaction prompt with the player's action as the initiating event
+      const { system, user: baseUser } = buildGroupConversationPrompt(mentionedNpcs, world, true)
 
-      // Give all participants knowledge of the activity
-      for (const npc of mentionedNpcs) {
-        addNpcKnowledge(npc.id, [{
-          id: uuid(),
-          content: `Participated in group activity with the visitor: ${action}. ${result.narrativeHint}`,
-          source: 'experienced',
-          confidence: 1.0,
-          importance: 0.8,
-          turnLearned: world.currentTick,
-          isSecret: false,
-        }])
+      const activityPrompt = `${baseUser}
+
+THE VISITOR initiates: "${action}"
+
+Generate the group's reaction to this. Each NPC responds in character — with dialogue, actions, and emotions. The activity plays out based on their personalities, goals, relationships, and state. Some may be enthusiastic, others reluctant, others might use this as an opportunity.
+
+Generate 4-8 lines of dialogue showing the NPCs reacting to and participating in the activity.`
+
+      try {
+        const rawResponse = await llmCallFn('simulation', system, activityPrompt, true)
+        let cleaned = rawResponse.trim()
+        if (cleaned.startsWith('```')) {
+          cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+        }
+        const parsed = JSON.parse(cleaned) as {
+          dialogue?: Array<{ speaker: string; says: string }>
+          summary: string
+          outcome?: { agreement_reached?: string | null; item_transferred?: { from: string; to: string; item: string } | null; conflict?: string | null }
+          takeaways?: Record<string, { knowledge: string; mood_shift: string | null; internal_reaction: string }>
+        }
+
+        // Build narrative from NPC dialogue
+        const dialogueLines = (parsed.dialogue ?? [])
+          .map((d) => `**${d.speaker}**: ${d.says}`)
+          .join('\n')
+        const narrative = dialogueLines || parsed.summary || `${groupNames} participate in the activity.`
+
+        // Give all participants knowledge
+        for (const npc of mentionedNpcs) {
+          const takeaway = parsed.takeaways?.[npc.name] ?? parsed.takeaways?.[npc.id]
+          addNpcKnowledge(npc.id, [{
+            id: uuid(),
+            content: takeaway?.knowledge ?? `Participated with the visitor in: ${action}. ${parsed.summary}`,
+            source: 'experienced with visitor',
+            confidence: 1.0,
+            importance: 0.8,
+            turnLearned: world.currentTick,
+            isSecret: false,
+          }])
+          if (takeaway?.mood_shift) {
+            const { updateNpcMoodGeneral: updateMood } = await import('../game/state.js')
+            updateMood(npc.id, takeaway.mood_shift, `after ${action} with the visitor`)
+          }
+        }
+
+        // Handle outcomes
+        if (parsed.outcome?.agreement_reached) {
+          const { addNpcAgreement: addAgreement } = await import('../game/state.js')
+          for (const npc of mentionedNpcs) {
+            addAgreement(npc.id, 'player', parsed.outcome.agreement_reached, world.currentTick)
+          }
+        }
+
+        onPlayerAction()
+        persistGame()
+
+        res.json({
+          success: true,
+          data: {
+            outcome: 'strong_success' as const,
+            narrative,
+            itemFound: null,
+            healthDelta: 0,
+            energyDelta: -5,
+            injury: null,
+          },
+        } satisfies ApiResponse<PlayerActionResponse>)
+        return
+      } catch (err) {
+        // Fallback to basic GM narration
+        console.error('Group activity dialogue failed:', err)
       }
-
-      onPlayerAction()
-      persistGame()
-
-      res.json({
-        success: true,
-        data: {
-          outcome: result.outcome,
-          narrative: result.narrativeHint,
-          itemFound: null,
-          healthDelta: result.effects?.actorHealthDelta ?? 0,
-          energyDelta: result.effects?.actorEnergyDelta ?? -5,
-          injury: result.effects?.actorInjury ?? null,
-        },
-      } satisfies ApiResponse<PlayerActionResponse>)
-      return
     }
 
     // ── Any other action: Game Master adjudicates ──
