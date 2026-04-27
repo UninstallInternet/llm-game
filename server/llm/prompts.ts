@@ -269,6 +269,7 @@ Generate their ACTUAL conversation — real dialogue with real outcomes. JSON fo
     { "speaker": "${npc2.name}", "says": "conclusion" }
   ],
   "summary": "2-3 sentence description of what happened AND what was decided/agreed/refused",
+  "concluded": true or false,
   "outcome": {
     "agreement_reached": "what they agreed to do together" or null,
     "item_transferred": { "from": "npc name", "to": "npc name", "item": "item name" } or null,
@@ -288,7 +289,11 @@ Generate their ACTUAL conversation — real dialogue with real outcomes. JSON fo
   }
 }
 
-IMPORTANT: Generate 3-5 lines of REAL dialogue. These characters should actually TALK to each other — make offers, ask questions, react, agree or disagree. The dialogue should lead to a concrete outcome (agreement, refusal, conflict, information exchange). Don't just summarize — show the conversation.`
+IMPORTANT:
+- Generate 3-5 lines of REAL dialogue per round. Make offers, ask questions, react, agree or disagree.
+- Set "concluded": true if the conversation has reached a natural end (agreement reached, topic exhausted, someone wants to leave). Set false if more discussion is needed.
+- Conversations can span multiple rounds. Don't rush to a conclusion — persuasion, negotiation, and building trust take time.
+- If this is a continuation (prior dialogue provided), build on what was said — don't repeat or restart.`
 
   return { system, user }
 }
