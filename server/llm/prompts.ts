@@ -221,13 +221,26 @@ RULES:
     .map((n) => n.name)
     .join(', ')
 
-  // Active plans (briefly, to color conversation)
-  const plan1 = npc1.activePlan?.status === 'active' ? `Currently working on: ${npc1.activePlan.goal}` : ''
-  const plan2 = npc2.activePlan?.status === 'active' ? `Currently working on: ${npc2.activePlan.goal}` : ''
+  // Active plans — CRITICAL: if one NPC's plan targets the other, this is WHY they're talking
+  const plan1 = npc1.activePlan?.status === 'active' ? `Currently working on: ${npc1.activePlan.goal}. Motivation: ${npc1.activePlan.motivation}` : ''
+  const plan2 = npc2.activePlan?.status === 'active' ? `Currently working on: ${npc2.activePlan.goal}. Motivation: ${npc2.activePlan.motivation}` : ''
+
+  // Check if one NPC's plan specifically targets the other — make it explicit
+  const npc1TargetsNpc2 = npc1.activePlan?.steps.some((s) =>
+    s.status === 'active' && (s.target.toLowerCase().includes(npc2.name.toLowerCase()) || s.description.toLowerCase().includes(npc2.name.toLowerCase()))
+  )
+  const npc2TargetsNpc1 = npc2.activePlan?.steps.some((s) =>
+    s.status === 'active' && (s.target.toLowerCase().includes(npc1.name.toLowerCase()) || s.description.toLowerCase().includes(npc1.name.toLowerCase()))
+  )
+  const planContext = npc1TargetsNpc2
+    ? `\nIMPORTANT: ${npc1.name} specifically came to talk to ${npc2.name} about: ${npc1.activePlan!.goal}. This conversation should address that goal directly.`
+    : npc2TargetsNpc1
+      ? `\nIMPORTANT: ${npc2.name} specifically came to talk to ${npc1.name} about: ${npc2.activePlan!.goal}. This conversation should address that goal directly.`
+      : ''
 
   const user = `Location: ${location?.name ?? 'unknown'} — ${location?.description?.slice(0, 80) ?? ''} (${world.time.timeOfDay}, Day ${world.time.day})
 ${othersPresent ? `Others nearby who might overhear: ${othersPresent}` : 'They are alone.'}
-${relevantEvents ? `Current events: ${relevantEvents}` : ''}
+${relevantEvents ? `Current events: ${relevantEvents}` : ''}${planContext}
 
 NPC_1: ${npc1.name}, ${npc1.occupation}, mood: ${npc1.mood.current}, hp: ${npc1.physical.health}/100
 Appearance: ${npc1.appearance}${(npc1.stateFlags?.length ?? 0) > 0 ? ` [Currently: ${npc1.stateFlags.join(', ')}]` : ''}

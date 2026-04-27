@@ -116,6 +116,39 @@ chatRoutes.post('/', async (req, res) => {
         type: 'npc_action',
         data: { npcId, description: npcResponse.action_after },
       })
+
+      // Convert action_after into an immediate plan so the NPC actually does it
+      const freshNpcForPlan = getNpc(npcId)
+      if (freshNpcForPlan && !freshNpcForPlan.activePlan) {
+        const { updateNpcPlan } = await import('../game/state.js')
+        updateNpcPlan(npcId, {
+          id: uuid(),
+          goal: npcResponse.action_after,
+          motivation: 'Committed to this during conversation with the visitor',
+          steps: [
+            {
+              action: npcResponse.action_after.toLowerCase().includes('talk') ||
+                      npcResponse.action_after.toLowerCase().includes('speak') ||
+                      npcResponse.action_after.toLowerCase().includes('approach') ||
+                      npcResponse.action_after.toLowerCase().includes('tell') ||
+                      npcResponse.action_after.toLowerCase().includes('ask')
+                ? 'confront'
+                : npcResponse.action_after.toLowerCase().includes('go') ||
+                  npcResponse.action_after.toLowerCase().includes('head') ||
+                  npcResponse.action_after.toLowerCase().includes('travel')
+                  ? 'travel'
+                  : 'attempt_objective',
+              target: npcResponse.action_after,
+              description: npcResponse.action_after,
+              status: 'active',
+            },
+          ],
+          allies: [],
+          status: 'active',
+          formedAtTick: world.currentTick,
+        })
+        console.log(`[Action→Plan] ${freshNpcForPlan.name}: "${npcResponse.action_after}"`)
+      }
     }
 
     // Apply state changes
