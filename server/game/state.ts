@@ -190,14 +190,56 @@ export function updateNpcMood(npcId: string, mood: string, playerDelta: number, 
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
 }
 
+function memorySimilar(a: string, b: string): boolean {
+  const aLower = a.toLowerCase()
+  const bLower = b.toLowerCase()
+  if (aLower === bLower) return true
+
+  // Check if first 40 chars match (likely same topic, just updated)
+  if (aLower.slice(0, 40) === bLower.slice(0, 40)) return true
+
+  // Check keyword overlap — if 60%+ of significant words match, it's similar
+  const wordsA = new Set(aLower.split(/\s+/).filter((w) => w.length > 4))
+  const wordsB = new Set(bLower.split(/\s+/).filter((w) => w.length > 4))
+  if (wordsA.size === 0 || wordsB.size === 0) return false
+  const overlap = [...wordsA].filter((w) => wordsB.has(w)).length
+  const similarity = overlap / Math.min(wordsA.size, wordsB.size)
+  return similarity > 0.6
+}
+
 export function addNpcKnowledge(npcId: string, entries: KnowledgeEntry[]): void {
   if (!currentWorld) return
   const npc = getNpc(npcId)
   if (!npc) return
 
-  let knowledge = [...npc.knowledge, ...entries]
+  let knowledge = [...npc.knowledge]
 
-  // Trim to max — drop oldest low-importance entries
+  for (const entry of entries) {
+    // Check for similar existing knowledge — update instead of duplicate
+    const existingIdx = knowledge.findIndex((k) => memorySimilar(k.content, entry.content))
+    if (existingIdx !== -1) {
+      const existing = knowledge[existingIdx]
+      // Keep the newer, more detailed version
+      if (entry.content.length >= existing.content.length) {
+        knowledge[existingIdx] = {
+          ...entry,
+          importance: Math.max(existing.importance, entry.importance),
+          confidence: Math.max(existing.confidence, entry.confidence),
+        }
+      } else {
+        // Just bump importance and tick
+        knowledge[existingIdx] = {
+          ...existing,
+          importance: Math.max(existing.importance, entry.importance),
+          turnLearned: entry.turnLearned,
+        }
+      }
+    } else {
+      knowledge.push(entry)
+    }
+  }
+
+  // Trim to max — drop lowest-scored entries
   if (knowledge.length > MAX_KNOWLEDGE_PER_NPC) {
     knowledge.sort((a, b) => {
       const scoreA = a.importance * Math.pow(MEMORY_DECAY_RATE, (currentWorld!.currentTick - a.turnLearned))
@@ -401,6 +443,8 @@ export function addNpcAgreement(
     )
   )
   if (existing) {
+    // Update existing agreement with newer version (longer = more refined)
+    existing.content = content.length > existing.content.length ? content : existing.content
     existing.madeAtTick = tick
     const updated: NPC = { ...npc, agreements: [...(npc.agreements ?? [])] }
     currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
@@ -408,7 +452,10 @@ export function addNpcAgreement(
   }
 
   const agreements = [...(npc.agreements ?? []), { withId, content, madeAtTick: tick, active: true }]
-  const trimmed = agreements.slice(-10)
+  // Keep only last 8 active + any inactive for history
+  const active = agreements.filter((a) => a.active).slice(-8)
+  const inactive = agreements.filter((a) => !a.active).slice(-4)
+  const trimmed = [...inactive, ...active]
 
   const updated: NPC = { ...npc, agreements: trimmed }
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
@@ -419,6 +466,20 @@ export function updateNpcPlan(npcId: string, plan: NPC['activePlan']): void {
   currentWorld.npcs = currentWorld.npcs.map((n) =>
     n.id === npcId ? { ...n, activePlan: plan ? { ...plan } : null } : n
   )
+}
+
+export function completeAgreement(npcId: string, agreementContent: string): void {
+  if (!currentWorld) return
+  const npc = getNpc(npcId)
+  if (!npc) return
+
+  const agreement = (npc.agreements ?? []).find(
+    (a) => a.active && a.content.toLowerCase().includes(agreementContent.toLowerCase().slice(0, 20))
+  )
+  if (agreement) {
+    agreement.active = false
+    currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? { ...npc } : n))
+  }
 }
 
 export function transferItem(fromId: string, toId: string, itemName: string): boolean {
