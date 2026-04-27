@@ -7,6 +7,7 @@ import {
   getLocation,
   isGameActive,
   persistGame,
+  addNpcKnowledge,
 } from '../game/state.js'
 import { judgeAction, searchContainer } from '../llm/judge.js'
 import { onPlayerAction } from '../simulation/engine.js'
@@ -198,9 +199,60 @@ actionRoutes.post('/', async (req, res) => {
       }
     }
 
+    // ── Group activity: detect multiple NPC names in action ──
+    const npcsAtLocation = world.npcs.filter((n) => n.currentLocationId === player.currentLocationId)
+    const mentionedNpcs = npcsAtLocation.filter((n) => {
+      const firstName = n.name.split(' ')[0].toLowerCase()
+      return actionLower.includes(firstName) || actionLower.includes(n.name.toLowerCase())
+    })
+
+    if (mentionedNpcs.length >= 2) {
+      // Group activity with multiple NPCs!
+      const groupNames = mentionedNpcs.map((n) => n.name).join(', ')
+      const groupContext = mentionedNpcs.map((n) => {
+        return `${n.name} (${n.occupation}, mood: ${n.mood.current}${(n.stateFlags?.length ?? 0) > 0 ? `, state: ${n.stateFlags.join('/')}` : ''})`
+      }).join('\n')
+
+      const result = await judgeAction({
+        actor: { name: 'The player', occupation: 'Visitor', tags: ['general-knowledge'], health: player.physical?.health },
+        action: `Group activity with ${groupNames}: ${action}`,
+        target: { name: groupNames, tags: [] },
+        environment: { name: location.name, tags: location.tags },
+        context: `Player is doing a group activity with: ${groupContext}. Player inventory: ${(player.inventory ?? []).map((i) => i.name).join(', ') || 'nothing'}. Location: ${location.description}`,
+      })
+
+      // Give all participants knowledge of the activity
+      for (const npc of mentionedNpcs) {
+        addNpcKnowledge(npc.id, [{
+          id: uuid(),
+          content: `Participated in group activity with the visitor: ${action}. ${result.narrativeHint}`,
+          source: 'experienced',
+          confidence: 1.0,
+          importance: 0.8,
+          turnLearned: world.currentTick,
+          isSecret: false,
+        }])
+      }
+
+      onPlayerAction()
+      persistGame()
+
+      res.json({
+        success: true,
+        data: {
+          outcome: result.outcome,
+          narrative: result.narrativeHint,
+          itemFound: null,
+          healthDelta: result.effects?.actorHealthDelta ?? 0,
+          energyDelta: result.effects?.actorEnergyDelta ?? -5,
+          injury: result.effects?.actorInjury ?? null,
+        },
+      } satisfies ApiResponse<PlayerActionResponse>)
+      return
+    }
+
     // ── Any other action: Game Master adjudicates ──
-    const npcsHere = world.npcs
-      .filter((n) => n.currentLocationId === player.currentLocationId)
+    const npcsHere = npcsAtLocation
       .map((n) => `${n.name} (${n.occupation})`)
       .join(', ')
 

@@ -30,18 +30,30 @@ export interface NpcTakeaway {
 }
 
 export interface NpcConversationResult {
-  npc1Id: string
-  npc2Id: string
+  participantIds: string[]
   locationId: string
   tick: number
   summary: string
-  npc1Takeaway: NpcTakeaway
-  npc2Takeaway: NpcTakeaway
+  dialogue: Array<{ speaker: string; says: string }>
+  takeaways: Record<string, {
+    knowledge: string
+    moodShift: string | null
+    relationshipDeltas: Record<string, number>
+    internalReaction: string
+  }>
   outcome: {
     agreement_reached?: string | null
     item_transferred?: { from: string; to: string; item: string } | null
     conflict?: string | null
   } | null
+}
+
+// Backward compat alias
+export interface NpcTakeaway {
+  knowledge: string
+  moodShift: string | null
+  relationshipDelta: number
+  internalReaction: string
 }
 
 export interface ScheduleEntry {

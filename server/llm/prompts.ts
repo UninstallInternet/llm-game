@@ -351,6 +351,102 @@ IMPORTANT:
   return { system, user }
 }
 
+// ─── N-Party Group Conversation Prompt ───
+
+export function buildGroupConversationPrompt(
+  participants: NPC[],
+  world: WorldState,
+  playerJoined = false
+): { system: string; user: string } {
+  const location = world.locations.find((l) => l.id === participants[0]?.currentLocationId)
+  const names = participants.map((p) => p.name).join(', ')
+
+  const system = `You simulate a group interaction between ${participants.length} characters in a text adventure. Generate natural multi-party dialogue.
+
+RULES:
+- Generate 4-8 lines of dialogue total. Not everyone needs to speak every line.
+- Mix *actions* with "dialogue". Characters DO things — hand items, gesture, react physically.
+- Characters who are addressed should respond. Characters with strong opinions speak up.
+- If any character has COMMITMENTS, they MUST bring them up.
+- If characters have talked before about a topic, advance it — don't repeat.
+- Set concluded=false unless a clear agreement or impasse is reached. Default to false.
+${playerJoined ? '- The visitor (player) has joined. NPCs should react naturally — some may welcome them, others may be cautious.' : ''}
+- Respond ONLY with JSON (no markdown).`
+
+  const participantBlocks = participants.map((npc, idx) => {
+    const rels = participants
+      .filter((p) => p.id !== npc.id)
+      .map((p) => {
+        const rel = npc.relationships.find((r) => r.targetNpcId === p.id)
+        if (!rel) return `  ${p.name}: no established relationship`
+        const feel = rel.affection > 20 ? 'likes' : rel.affection < -20 ? 'dislikes' : 'neutral'
+        const trust = rel.trust > 30 ? ', trusts' : rel.trust < -30 ? ', distrusts' : ''
+        return `  ${p.name}: ${rel.type}, ${feel}${trust}`
+      }).join('\n')
+
+    const k = getTopMemories(npc, world.currentTick, names)
+      .filter((k) => !k.isSecret).slice(0, 5).map((k) => k.content).join('; ')
+
+    const plan = npc.activePlan?.status === 'active'
+      ? `Plan: ${npc.activePlan.goal}. Motivation: ${npc.activePlan.motivation}`
+      : ''
+
+    const agreements = (npc.agreements ?? []).filter((a) => a.active).map((a) => {
+      const other = a.withId === 'player' ? 'the visitor' : world.npcs.find((n) => n.id === a.withId)?.name ?? a.withId
+      return `- With ${other}: ${a.content}`
+    }).join('\n')
+
+    return `PARTICIPANT ${idx + 1}: ${npc.name}, ${npc.occupation}, mood: ${npc.mood.current}
+Personality: ${npc.personality.traits.join(', ')}. ${npc.personality.speechStyle}.
+${npc.appearance}${(npc.stateFlags?.length ?? 0) > 0 ? ` [Currently: ${npc.stateFlags.join(', ')}]` : ''}
+Goal: ${npc.goals.public} (secret: ${npc.goals.secret})
+Inventory: ${(npc.inventory ?? []).map((i) => i.name).join(', ') || 'nothing'}
+${plan}
+${agreements ? `COMMITMENTS (MUST act on):\n${agreements}` : ''}
+Knows: ${k || 'nothing notable'}
+Relationships:
+${rels}`
+  }).join('\n\n')
+
+  // Group dynamics
+  const alliances: string[] = []
+  const tensions: string[] = []
+  for (let i = 0; i < participants.length; i++) {
+    for (let j = i + 1; j < participants.length; j++) {
+      const rel = participants[i].relationships.find((r) => r.targetNpcId === participants[j].id)
+      if (rel) {
+        if (rel.trust > 40 && rel.affection > 20) alliances.push(`${participants[i].name} + ${participants[j].name}`)
+        if (rel.trust < -20 || rel.type === 'rival' || rel.type === 'enemy') tensions.push(`${participants[i].name} vs ${participants[j].name}`)
+      }
+    }
+  }
+
+  const dynamicsStr = (alliances.length > 0 || tensions.length > 0)
+    ? `\nGROUP DYNAMICS:\n${alliances.length > 0 ? `Alliances: ${alliances.join(', ')}` : ''}${tensions.length > 0 ? `\nTensions: ${tensions.join(', ')}` : ''}`
+    : ''
+
+  const takeawayKeys = participants.map((p) => `"${p.id}": { "knowledge": "...", "mood_shift": null, "relationship_deltas": {${participants.filter((o) => o.id !== p.id).map((o) => `"${o.id}": 0`).join(', ')}}, "internal_reaction": "..." }`).join(',\n    ')
+
+  const user = `Location: ${location?.name ?? 'unknown'} — ${location?.description?.slice(0, 80) ?? ''}
+Participants: ${names}
+${dynamicsStr}
+
+${participantBlocks}
+
+Generate their conversation. JSON:
+{
+  "dialogue": [{"speaker": "Name", "says": "*action* \\"speech\\""}],
+  "summary": "2-3 sentences: what happened and what changed",
+  "concluded": false,
+  "outcome": {"agreement_reached": null, "item_transferred": null, "conflict": null},
+  "takeaways": {
+    ${takeawayKeys}
+  }
+}`
+
+  return { system, user }
+}
+
 // ─── World Generation Prompt ───
 
 export function buildWorldGenPrompt(
