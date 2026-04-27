@@ -243,9 +243,20 @@ export async function executeCurrentStep(
 
   const currentStep = npc.activePlan.steps.find((s) => s.status === 'active')
   if (!currentStep) {
-    // All steps done or none active — complete the plan
     npc.activePlan.status = 'completed'
     return { executed: false, description: 'Plan completed' }
+  }
+
+  // Stale timeout — any step active for 5+ ticks auto-fails
+  const stepAge = world.currentTick - (npc.activePlan.formedAtTick ?? 0)
+  if (stepAge > 5 && currentStep.status === 'active') {
+    const attemptMatch = currentStep.result?.match(/attempt (\d+)/)
+    if (attemptMatch && parseInt(attemptMatch[1], 10) >= 3) {
+      currentStep.status = 'failed'
+      currentStep.result = 'Timed out after multiple attempts'
+      updateNpcPlan(npc.id, npc.activePlan)
+      return { executed: false, description: `${npc.name} gives up on: ${currentStep.description.slice(0, 40)}` }
+    }
   }
 
   let result: { executed: boolean; description: string }

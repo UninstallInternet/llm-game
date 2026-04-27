@@ -29,34 +29,11 @@ export function stopSimulation(): void {
 export function onPlayerAction(): void {
   if (!isGameActive()) return
 
-  // Mini tick: NPC movement + conversations on every player action (cheap, no planning LLM calls)
-  if (!tickInProgress) {
-    void runMiniTick()
-  }
-
   actionCount++
 
-  // Full tick with planning every ACTIONS_PER_TICK actions
   if (actionCount >= ACTIONS_PER_TICK && !tickInProgress) {
     actionCount = 0
     void runTick()
-  }
-}
-
-// Lightweight tick — just movement and conversations, no expensive planning
-async function runMiniTick(): Promise<void> {
-  try {
-    const movements = moveNpcsToSchedule()
-    for (const move of movements) {
-      broadcastEvent({ type: 'npc_moved', data: move })
-    }
-
-    const shares = propagateInfo()
-    for (const share of shares) {
-      broadcastEvent({ type: 'info_shared', data: share })
-    }
-  } catch (error) {
-    console.error('Mini tick error:', error)
   }
 }
 
