@@ -186,8 +186,8 @@ Mostly deterministic (zero LLM cost):
 
 - **Action-driven**: no real-time ticking — world advances when the player acts
 - **10 minutes per tick**: every 2 player actions = 1 full tick
-- **Mini ticks**: NPC movement + info propagation on every player action
 - **Full ticks**: time advances, NPC conversations, autonomous planning, reflections, event triggers
+- **No mini-ticks**: simplified to full ticks only for reliability
 
 ---
 
@@ -204,7 +204,21 @@ Mostly deterministic (zero LLM cost):
 
 ---
 
-## Development History (66 commits)
+## Testing
+
+```bash
+# Start the server first
+npm run dev:server
+
+# Run integration tests (requires OpenAI API key, ~$0.05 per run)
+npm run test
+```
+
+12 automated tests covering: world gen, chat, memory, actions, ticks, plans, navigation, save/load, agreement dedup, memory dedup.
+
+---
+
+## Development History (80+ commits)
 
 ### Phase 1: Foundation
 Core game loop — world generation, NPC dialogue, simulation engine, SQLite persistence, React UI with 3-panel layout, action-based time system.
@@ -221,5 +235,17 @@ Universal action execution (removed hardcoded switch), plan-aware conversation p
 ### Phase 5: Group Interactions
 N-party conversations (2-5 participants), player group activities with per-NPC LLM calls, persistent group sessions with context continuity, interactive SVG map, NPC inspect panels, comprehensive debug tooling.
 
+### Phase 6: Reliability Refactor
+OpenAI function calling on all 6 LLM call sites (guaranteed schema compliance), structured prompt sections optimized for LLM attention, deterministic fallbacks, need-driven conversations (NPCs only talk when they have a reason), impossible plan detection, auto-travel to locations in plan steps.
+
+### Phase 7: Autonomous Simulation
+Verified 113-tick autonomous simulation with 4 NPCs pursuing secret goals:
+- NPCs proactively form plans from secret goals without player prompting
+- Plans execute, complete, and new plans emerge automatically
+- Single-round conversations that immediately produce knowledge
+- 91% unique conversation topics (minimal repetition)
+- Critical crash fix (null step in conversation pairing killed ticks 52-105)
+- Integration test suite (19/20 passing)
+
 ### Code Quality
-4 code review passes, 4 CRITICAL data corruption fixes (immutability violations), race condition prevention, memory deduplication, agreement deduplication, defensive null checks throughout.
+5 code review passes, 4 CRITICAL data corruption fixes (immutability violations), race condition prevention, memory deduplication, agreement deduplication, function calling eliminates JSON parsing failures.
