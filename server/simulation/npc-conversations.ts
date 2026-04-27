@@ -190,8 +190,6 @@ function findConversationReasons(world: WorldState): ConversationReason[] {
 
 function selectConversationGroups(world: WorldState): NPC[][] {
   const reasons = findConversationReasons(world)
-  if (reasons.length > 0) {
-  }
   const selected: NPC[][] = []
   const usedIds = new Set<string>()
 
