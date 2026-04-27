@@ -69,9 +69,10 @@ chatRoutes.post('/', async (req, res) => {
       tick: world.currentTick,
     })
 
-    // Get NPC response from LLM
+    // Re-fetch NPC to get latest state (knowledge from this tick's simulation)
+    const freshNpc = getNpc(npcId) ?? npc
     const history = player.conversationHistory[npcId] ?? []
-    const npcResponse = await conversate(npc, world, history, message)
+    const npcResponse = await conversate(freshNpc, world, history, message)
 
     // Save NPC turn
     addConversationTurn(npcId, {

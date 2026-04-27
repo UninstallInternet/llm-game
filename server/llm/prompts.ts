@@ -26,7 +26,7 @@ function formatKnowledge(entries: KnowledgeEntry[]): string {
     .join('\n')
 }
 
-export function buildNpcSystemPrompt(npc: NPC, world: WorldState): string {
+export function buildNpcSystemPrompt(npc: NPC, world: WorldState, playerMessage?: string): string {
   const recentEvents = world.events
     .filter((e) => !e.resolved && e.triggerDay <= world.time.day)
     .slice(0, 3)
@@ -42,7 +42,7 @@ export function buildNpcSystemPrompt(npc: NPC, world: WorldState): string {
     .filter(Boolean)
     .join('\n')
 
-  const topMemories = getTopMemories(npc, world.currentTick, 'player visitor conversation')
+  const topMemories = getTopMemories(npc, world.currentTick, playerMessage)
   const knowledgeStr = formatKnowledge(topMemories)
 
   // Active plan context
@@ -125,7 +125,8 @@ export function buildConversationMessages(
   history: ConversationTurn[],
   playerMessage: string
 ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
-  const systemPrompt = buildNpcSystemPrompt(npc, world)
+  // Pass player message to system prompt so memory retrieval is contextual
+  const systemPrompt = buildNpcSystemPrompt(npc, world, playerMessage)
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: systemPrompt },
@@ -138,7 +139,7 @@ export function buildConversationMessages(
     const summaryParts: string[] = []
     for (const t of olderTurns) {
       const speaker = t.role === 'player' ? 'Visitor' : npc.name
-      summaryParts.push(`${speaker}: ${t.content.slice(0, 60)}`)
+      summaryParts.push(`${speaker}: ${t.content.slice(0, 150)}`)
     }
     messages.push({
       role: 'user',

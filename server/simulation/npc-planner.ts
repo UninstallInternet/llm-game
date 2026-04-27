@@ -7,6 +7,7 @@ import {
   getTopMemories,
   applyPhysicalEffects,
   updateNpcRelationship,
+  updateNpcPlan,
 } from '../game/state.js'
 import { llmCall } from '../llm/client.js'
 import { judgeAction, searchContainer } from '../llm/judge.js'
@@ -265,6 +266,9 @@ export async function executeCurrentStep(
       })
     }
   }
+
+  // Persist plan state changes through proper state management
+  updateNpcPlan(npc.id, npc.activePlan)
 
   return result
 }
@@ -534,7 +538,7 @@ export async function processNpcTurn(
   if (activation >= ACTIVATION_THRESHOLD_HIGH) {
     const plan = await formPlan(npc, world)
     if (plan) {
-      npc.activePlan = plan
+      updateNpcPlan(npc.id, plan)
       console.log(`[NPC Plan] ${npc.name}: "${plan.goal}" (${plan.steps.length} steps)`)
       broadcastEvent({
         type: 'npc_plan',

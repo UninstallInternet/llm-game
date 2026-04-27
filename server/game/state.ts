@@ -229,7 +229,7 @@ export function advanceTime(): GameTime {
   let day = currentWorld.time.day
 
   if (minute >= 60) {
-    minute = 0
+    minute = minute - 60
     hour++
   }
   if (hour >= 24) {
@@ -393,6 +393,13 @@ export function addNpcAgreement(
 
   const updated: NPC = { ...npc, agreements: trimmed }
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+}
+
+export function updateNpcPlan(npcId: string, plan: NPC['activePlan']): void {
+  if (!currentWorld) return
+  currentWorld.npcs = currentWorld.npcs.map((n) =>
+    n.id === npcId ? { ...n, activePlan: plan ? { ...plan } : null } : n
+  )
 }
 
 export function applyPhysicalEffects(
