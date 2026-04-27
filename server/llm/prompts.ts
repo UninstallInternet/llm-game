@@ -196,16 +196,34 @@ export function buildNpcConversationPrompt(
     .map((e) => e.title)
     .join(', ')
 
-  const system = `You simulate NPC-to-NPC interactions in a text adventure. Generate a brief, natural exchange. Both act according to personality, goals, and knowledge. They may talk, argue, scheme, help each other, physically confront, trade items, or take actions — whatever makes sense.
+  // Check if they've talked before and what about
+  const priorConvoKnowledge1 = npc1.knowledge
+    .filter((k) => k.source.includes(npc2.name) || k.source.includes(npc2.name.split(' ')[0]))
+    .slice(-3)
+    .map((k) => k.content)
+    .join('; ')
+  const priorConvoKnowledge2 = npc2.knowledge
+    .filter((k) => k.source.includes(npc1.name) || k.source.includes(npc1.name.split(' ')[0]))
+    .slice(-3)
+    .map((k) => k.content)
+    .join('; ')
+
+  const priorContext = (priorConvoKnowledge1 || priorConvoKnowledge2)
+    ? `\nPRIOR CONVERSATIONS (DO NOT repeat these topics — advance the story):\n${priorConvoKnowledge1 ? `${npc1.name} remembers: ${priorConvoKnowledge1}` : ''}${priorConvoKnowledge2 ? `\n${npc2.name} remembers: ${priorConvoKnowledge2}` : ''}`
+    : ''
+
+  const system = `You simulate NPC-to-NPC interactions in a text adventure. Generate a natural exchange. Both act according to personality, goals, and knowledge.
 
 RULES:
-- 2-4 turns total. Mix DIALOGUE and ACTIONS naturally.
-- Actions in italics style: *slams fist on table* "I told you not to go there." *lowers voice*
-- Characters don't just talk — they DO things. A mechanic might be repairing something mid-conversation. A guard might block a doorway. Someone might hand over an item, or shove someone.
+- 3-5 turns total. Mix DIALOGUE and ACTIONS naturally.
+- Actions in italics: *slams fist on table* "I told you not to go there."
+- Characters DO things — hand over items, shove, block, repair, search.
+- If they have COMMITMENTS, they MUST bring them up and try to fulfill them.
+- If they've talked before about a topic, DON'T repeat it — advance to the next step or make a specific request.
 - Characters never reveal secret goals directly, but those goals color behavior.
-- If one knows something the other doesn't, they may share it (or strategically withhold it).
 - Secret knowledge stays secret unless trust is very high.
-- The summary should describe what HAPPENED, not just what was said.
+- The summary should describe what HAPPENED and what CHANGED.
+- Set concluded=false if the topic needs more discussion. Set true when resolved.
 - Respond ONLY with JSON (no markdown, no fences).`
 
   const formatRel = (rel: typeof rel1to2, otherName: string) => {
@@ -240,7 +258,7 @@ RULES:
 
   const user = `Location: ${location?.name ?? 'unknown'} — ${location?.description?.slice(0, 80) ?? ''} (${world.time.timeOfDay}, Day ${world.time.day})
 ${othersPresent ? `Others nearby who might overhear: ${othersPresent}` : 'They are alone.'}
-${relevantEvents ? `Current events: ${relevantEvents}` : ''}${planContext}
+${relevantEvents ? `Current events: ${relevantEvents}` : ''}${planContext}${priorContext}
 
 NPC_1: ${npc1.name}, ${npc1.occupation}, mood: ${npc1.mood.current}, hp: ${npc1.physical.health}/100
 Appearance: ${npc1.appearance}${(npc1.stateFlags?.length ?? 0) > 0 ? ` [Currently: ${npc1.stateFlags.join(', ')}]` : ''}

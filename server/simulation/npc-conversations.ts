@@ -73,12 +73,13 @@ function scorePair(a: NPC, b: NPC, world: WorldState): number {
   if (relAtoB?.type === 'rival' || relAtoB?.type === 'enemy' || relBtoA?.type === 'rival' || relBtoA?.type === 'enemy') score += 0.1
   score += Math.random() * 0.05
 
+  // Strong recency penalty — don't repeat conversations
   const recentlySpoke = a.knowledge.some(
-    (k) => k.source.includes(b.name) && k.turnLearned >= world.currentTick - 2
+    (k) => k.source.includes(b.name) && k.turnLearned >= world.currentTick - 4
   ) || b.knowledge.some(
-    (k) => k.source.includes(a.name) && k.turnLearned >= world.currentTick - 2
+    (k) => k.source.includes(a.name) && k.turnLearned >= world.currentTick - 4
   )
-  if (recentlySpoke) score *= 0.3
+  if (recentlySpoke) score *= 0.05 // almost zero — let other pairs talk instead
 
   return score
 }
@@ -268,7 +269,11 @@ function applyConversationResult(result: NpcConversationResult, world: WorldStat
     }
   }
 
-  // Mark plan steps targeting the other NPC as completed (conversation fulfilled them)
+  // Mark plan steps targeting the other NPC — only complete if outcome was meaningful
+  const hasAgreement = !!result.outcome?.agreement_reached
+  const hasConflict = !!result.outcome?.conflict
+  const hasOutcome = hasAgreement || hasConflict || !!result.outcome?.item_transferred
+
   for (const npc of [npc1, npc2]) {
     const other = npc === npc1 ? npc2 : npc1
     if (npc.activePlan?.status === 'active') {
@@ -276,9 +281,16 @@ function applyConversationResult(result: NpcConversationResult, world: WorldStat
         if (step.status !== 'active') continue
         const firstName = other.name.split(' ')[0].toLowerCase()
         if (step.target.toLowerCase().includes(firstName) || step.description.toLowerCase().includes(firstName)) {
-          step.status = 'completed'
-          step.result = `Talked with ${other.name}: ${result.summary.slice(0, 60)}`
-          console.log(`[Plan Step Done] ${npc.name}: "${step.description.slice(0, 40)}" via conversation`)
+          if (hasOutcome) {
+            // Real outcome achieved — mark completed
+            step.status = 'completed'
+            step.result = `Talked with ${other.name}: ${result.summary.slice(0, 60)}`
+            console.log(`[Plan Step Done] ${npc.name}: "${step.description.slice(0, 40)}" — outcome: ${hasAgreement ? 'agreement' : hasConflict ? 'conflict' : 'transfer'}`)
+          } else {
+            // Conversation happened but no concrete outcome — don't complete yet
+            step.result = `Discussed with ${other.name} but no resolution yet`
+            console.log(`[Plan Step Pending] ${npc.name}: talked to ${other.name} but no outcome`)
+          }
         }
       }
       // Advance to next step
