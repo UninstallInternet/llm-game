@@ -425,6 +425,20 @@ export function updateNpcStateFlags(npcId: string, changes: string[]): void {
     else flags.add(change) // default to add
   }
 
+
+  // Cap tags at 5 — keep physical tags (injured, bleeding, armed, restrained, nude, unconscious)
+  // and drop oldest emotional/behavioral tags when over limit
+  const physicalTags = new Set(['injured', 'bleeding', 'armed', 'restrained', 'nude', 'unconscious', 'tied_up', 'sleeping', 'undressed', 'disguised', 'wet'])
+  const flagArr = [...flags]
+  if (flagArr.length > 7) {
+    const physical = flagArr.filter((f) => physicalTags.has(f))
+    const emotional = flagArr.filter((f) => !physicalTags.has(f))
+    // Keep all physical + most recent emotional (last added = last in array)
+    const kept = [...physical, ...emotional.slice(-Math.max(1, 7 - physical.length))]
+    flags.clear()
+    for (const f of kept) flags.add(f)
+  }
+
   const newFlags = [...flags]
   const updated: NPC = { ...npc, stateFlags: newFlags }
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))

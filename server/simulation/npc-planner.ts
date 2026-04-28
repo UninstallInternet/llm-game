@@ -241,7 +241,7 @@ INSTRUCTIONS:
 - THINK ABOUT PREREQUISITES: if you need an item, add a "search" step BEFORE the step that uses it.
 - Choose the right action for the situation. If you are enemies with someone, you might ATTACK them, not talk. If the situation is dangerous, you might FIGHT or FLEE, not negotiate.
 - Use real location IDs (loc_X) for travel targets.
-- Use real NPC names for targets.
+- ALWAYS use specific NPC names in step targets and descriptions. NEVER say "others", "everyone", "other succubi", "the group". Say "Emberlyn Ashfire" or "Selene Moonshade". The system needs exact names to execute steps.
 - Consider who you trust, who might help, who might oppose you. ENEMIES should be fought, ALLIES should be recruited.
 - Consider what items you already have and what you still need.
 - Consider security levels — high-security areas need preparation.
