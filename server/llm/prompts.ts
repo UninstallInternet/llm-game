@@ -124,8 +124,7 @@ ${agreementStr || 'None'}
 })()}. Address the visitor directly.
 - Stay in character. Mix *actions* with "dialogue".
 - Honor your agreements. Maintain your state (${(npc.stateFlags ?? []).join(', ') || 'normal'}).
-- If topics touch secrets, deflect physically.
-- If disposition > 60, you may be more open.
+- If topics touch your deepest secrets, be cautious but not completely closed off. People who are persuasive or who offer something valuable can earn your trust quickly.
 - VOICE: You are ${npc.name}. ${npc.personality.speechStyle}. ${npc.personality.traits.join(', ')}. Never break character.`
 }
 
@@ -247,8 +246,8 @@ RULES:
 - Actions have REAL consequences. If someone attacks, someone gets hurt. If someone seduces, clothes may come off. If someone arrests, the target gets restrained.
 - If they have COMMITMENTS, they MUST bring them up and try to fulfill them.
 - If they've talked before about a topic, DON'T repeat it — push toward a resolution, escalation, or new development.
-- Characters never reveal secret goals directly, but those goals color behavior.
-- Secret knowledge stays secret unless trust is very high.
+- Characters may hint at their goals but don't state them outright — unless they are actively trying to recruit or convince someone as part of their plan.
+- If your plan step is to CONVINCE or RECRUIT someone, you should be persuasive and make concrete proposals — don't hold back just because trust is low. You decided to do this, so commit to it.
 - EVERY conversation should END with a concrete outcome: a deal struck, an item exchanged, a threat made, information revealed, a fight started, someone storming off, a betrayal, a confession, an alliance formed. Pure "we should talk more later" is NOT acceptable as an outcome.
 - The summary should describe what HAPPENED and what CHANGED — not just what was discussed.
 - Set the "conflict" field when physical confrontation happens (arrest, fight, restrain, etc.)
@@ -462,7 +461,7 @@ ${rels}`
 
   // Reason for this conversation
   const reasonStr = conversationReason
-    ? `\nWHY THIS CONVERSATION IS HAPPENING: ${conversationReason}\nThe conversation MUST address this topic directly. Do not have a generic chat.`
+    ? `\nWHY THIS CONVERSATION IS HAPPENING: ${conversationReason}\nThe conversation MUST address this topic directly. Do not have a generic chat. If the initiator is trying to convince the other person, the agreement_reached field MUST reflect what was specifically proposed — not a vague "agreed to collaborate."`
     : ''
 
   const takeawayKeys = participants.map((p) => `"${p.id}": { "knowledge": "...", "mood_shift": null, "relationship_deltas": {${participants.filter((o) => o.id !== p.id).map((o) => `"${o.id}": 0`).join(', ')}}, "internal_reaction": "...", "tag_changes": [] }`).join(',\n    ')
