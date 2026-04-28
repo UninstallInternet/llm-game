@@ -4,9 +4,60 @@ An emergent text adventure where NPCs are fully autonomous agents powered by LLM
 
 ## Quick Start
 
+### Docker (recommended)
+
+**1. Copy and configure your environment:**
+```bash
+cp .env.example .env
+```
+
+**2. Choose your mode:**
+
+#### Production
+Builds optimized images (nginx for client, no hot reload). Use for deployment or final testing.
+```bash
+docker compose up --build       # build and start (foreground)
+docker compose up -d --build    # build and start (background)
+```
+- App: **http://localhost**
+- Rebuild after code changes: `docker compose up --build server` or `docker compose up --build client`
+
+#### Development
+Mounts your source code directly — changes to server files auto-restart, client has hot module reload. No rebuild needed after edits.
+```bash
+docker compose -f docker-compose.dev.yml up
+```
+- App: **http://localhost:5173**
+- Server API: **http://localhost:3001**
+- DB **localhost:5432** user/db from your `.env`
+
+#### Stop containers
+```bash
+docker compose down              # stop (keeps database)
+docker compose down -v           # stop and delete database volume
+```
+
+#### Prod vs Dev comparison
+
+| | **Prod** (`docker-compose.yml`) | **Dev** (`docker-compose.dev.yml`) |
+|-|-|-|
+| db image | postgres:16-alpine | postgres:16-alpine |
+| db port | not exposed (internal only) | `5432:5432` (DBeaver access) |
+| db volume | `postgres_data` | `postgres_data_dev` |
+| server | built from `server/Dockerfile` | `node:20-alpine` + source mount |
+| server command | baked into image | `npm ci && npm run dev:server` |
+| server port | not exposed (nginx proxies it) | `3001:3001` (direct API access) |
+| server hot reload | no | yes (`tsx --watch`) |
+| client | nginx on `:80`, built React | Vite on `:5173`, live source |
+| client hot reload | no | yes (Vite HMR) |
+| network | `app_network` | `dev_network` |
+| env/credentials | same `.env` file | same `.env` file |
+| health check chain | db → server → client | db → server → client |
+
+### Without Docker
 ```bash
 npm install
-cp .env.example .env  # add your OPENAI_API_KEY
+cp .env.example .env  # add your OPENAI_API_KEY (DATABASE_URL not needed)
 npm run dev            # starts server (:3001) + frontend (:5173)
 ```
 
@@ -17,8 +68,8 @@ Open **http://localhost:5173**. Pick a preset or describe your own world. Genera
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS
 - **Backend**: Node.js + Express
 - **LLM**: OpenAI API (gpt-4o for world gen, gpt-4o-mini for everything else)
-- **Database**: SQLite via better-sqlite3
-- **State**: Zustand (client), in-memory + SQLite (server)
+- **Database**: PostgreSQL (via `pg` pool; Docker) or SQLite-compatible via schema on local dev
+- **State**: Zustand (client), in-memory + PostgreSQL (server)
 
 ---
 
