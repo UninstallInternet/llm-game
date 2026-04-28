@@ -89,6 +89,34 @@ async function runTick(): Promise<void> {
       broadcastEvent({ type: 'info_shared', data: share })
     }
 
+    // 3.5 Tag awareness — NPCs notice visible tags on co-located NPCs
+    const worldForTags = getWorld()
+    for (const npc of worldForTags.npcs) {
+      if (npc.physical.status === 'dead' || npc.physical.status === 'unconscious') continue
+      const coLocated = worldForTags.npcs.filter((n) => n.id !== npc.id && n.currentLocationId === npc.currentLocationId)
+      for (const other of coLocated) {
+        const visibleTags = (other.stateFlags ?? []).filter((f) => f !== 'hiding' && f !== 'focused')
+        if (visibleTags.length === 0) continue
+        // Check if NPC already knows about this specific combination
+        const tagStr = visibleTags.join(', ')
+        const alreadyKnows = npc.knowledge.some((k) =>
+          k.source === 'observed' && k.content.includes(other.name.split(' ')[0]) &&
+          visibleTags.every((t) => k.content.toLowerCase().includes(t))
+        )
+        if (!alreadyKnows) {
+          addNpcKnowledge(npc.id, [{
+            id: uuid(),
+            content: `${other.name} appears to be ${tagStr}. This is noticeable.`,
+            source: 'observed',
+            confidence: 1.0,
+            importance: 0.5,
+            turnLearned: worldForTags.currentTick,
+            isSecret: false,
+          }])
+        }
+      }
+    }
+
     // 4. NPC-to-NPC conversations (1-2 LLM calls)
     await runNpcConversations()
 
