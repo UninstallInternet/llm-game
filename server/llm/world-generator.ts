@@ -312,32 +312,78 @@ Respond with ONLY JSON:
     }
   }
 
-  // Add shops to market/store type locations
+  // Add shops to locations that would plausibly sell things
+  const settingLower = settingDescription.toLowerCase()
+  const currencyName = settingLower.includes('gold') || settingLower.includes('medieval') || settingLower.includes('fantasy') ? 'gold'
+    : settingLower.includes('credit') || settingLower.includes('space') || settingLower.includes('future') ? 'credits'
+    : settingLower.includes('dollar') || settingLower.includes('western') ? 'dollars'
+    : 'coins'
+
+  // Location types/names that would have things for sale
+  const shopTypes = new Set(['market', 'store', 'shop', 'tavern', 'saloon', 'bar', 'inn'])
+  const shopNameWords = ['store', 'shop', 'market', 'bazaar', 'trading', 'goods', 'merchant', 'vendor', 'tavern', 'saloon', 'bar', 'inn', 'pub', 'cantina', 'lounge', 'apothecary', 'armory', 'smithy', 'forge']
+
+  // Setting-appropriate item sets
+  const tavernItems = [
+    { item: { id: '', name: 'Flask of Spirits', tags: ['drink', 'consumable'], locationId: null, ownerId: null, description: 'Strong drink. Loosens tongues and steadies nerves.' }, price: 5, stock: 10 },
+    { item: { id: '', name: 'Hearty Meal', tags: ['food', 'consumable'], locationId: null, ownerId: null, description: 'A warm meal that restores energy.' }, price: 8, stock: 5 },
+    { item: { id: '', name: 'Healing Tonic', tags: ['medicine', 'consumable'], locationId: null, ownerId: null, description: 'Bitter brew that mends minor wounds.' }, price: 15, stock: 3 },
+  ]
+  const generalItems = [
+    { item: { id: '', name: 'Healing Salve', tags: ['medicine', 'consumable'], locationId: null, ownerId: null, description: 'Medicinal paste for wounds.' }, price: 15, stock: 3 },
+    { item: { id: '', name: 'Sturdy Rope', tags: ['tool', 'general'], locationId: null, ownerId: null, description: 'Strong rope, many uses.' }, price: 8, stock: 5 },
+    { item: { id: '', name: 'Lantern', tags: ['tool', 'light'], locationId: null, ownerId: null, description: 'Oil lantern for dark places.' }, price: 12, stock: 3 },
+    { item: { id: '', name: 'Lockpick Set', tags: ['tool', 'stealth'], locationId: null, ownerId: null, description: 'Fine picks for opening locks.' }, price: 25, stock: 2 },
+    { item: { id: '', name: 'Flask of Spirits', tags: ['drink', 'consumable'], locationId: null, ownerId: null, description: 'Strong drink.' }, price: 5, stock: 10 },
+  ]
+  const armoryItems = [
+    { item: { id: '', name: 'Short Sword', tags: ['weapon', 'melee'], locationId: null, ownerId: null, description: 'A reliable blade for close combat.' }, price: 30, stock: 2 },
+    { item: { id: '', name: 'Leather Armor', tags: ['armor', 'clothing'], locationId: null, ownerId: null, description: 'Basic protection without slowing you down.' }, price: 25, stock: 2 },
+    { item: { id: '', name: 'Healing Salve', tags: ['medicine', 'consumable'], locationId: null, ownerId: null, description: 'Medicinal paste for battle wounds.' }, price: 15, stock: 3 },
+  ]
+
+  let shopAdded = false
   for (const loc of locations) {
-    const isShopLocation = loc.type === 'market' || loc.type === 'store' || loc.type === 'shop' ||
-      loc.name.toLowerCase().includes('store') || loc.name.toLowerCase().includes('shop') ||
-      loc.name.toLowerCase().includes('market') || loc.name.toLowerCase().includes('bazaar') ||
-      loc.name.toLowerCase().includes('trading') || loc.name.toLowerCase().includes('goods') ||
-      loc.name.toLowerCase().includes('merchant') || loc.name.toLowerCase().includes('vendor')
-    if (isShopLocation) {
-      // Determine currency name from setting
-      const settingLower = settingDescription.toLowerCase()
-      const currencyName = settingLower.includes('gold') || settingLower.includes('medieval') || settingLower.includes('fantasy') ? 'gold'
-        : settingLower.includes('credit') || settingLower.includes('space') || settingLower.includes('future') ? 'credits'
-        : settingLower.includes('dollar') || settingLower.includes('western') ? 'dollars'
-        : 'coins'
+    const nameLower = loc.name.toLowerCase()
+    const isShopLocation = shopTypes.has(loc.type) || shopNameWords.some((w) => nameLower.includes(w))
+    if (!isShopLocation) continue
 
-      const shopItems = [
-        { item: { id: `${loc.id}_shop_1`, name: 'Healing Salve', tags: ['medicine', 'consumable'], locationId: null, ownerId: null, description: 'A jar of medicinal paste that helps heal wounds.' }, price: 15, stock: 3 },
-        { item: { id: `${loc.id}_shop_2`, name: 'Sturdy Rope', tags: ['tool', 'general'], locationId: null, ownerId: null, description: 'A length of strong rope, useful for many things.' }, price: 8, stock: 5 },
-        { item: { id: `${loc.id}_shop_3`, name: 'Lantern', tags: ['tool', 'light'], locationId: null, ownerId: null, description: 'A reliable oil lantern for dark places.' }, price: 12, stock: 3 },
-        { item: { id: `${loc.id}_shop_4`, name: 'Lockpick Set', tags: ['tool', 'stealth'], locationId: null, ownerId: null, description: 'A set of fine metal picks for opening locks.' }, price: 25, stock: 2 },
-        { item: { id: `${loc.id}_shop_5`, name: 'Flask of Spirits', tags: ['drink', 'consumable'], locationId: null, ownerId: null, description: 'Strong drink. Might loosen tongues or steady nerves.' }, price: 5, stock: 10 },
-      ]
+    // Pick items based on location type
+    const isTavern = ['tavern', 'saloon', 'bar', 'inn', 'pub', 'cantina', 'lounge'].some((w) => nameLower.includes(w) || loc.type === w)
+    const isArmory = ['armory', 'smithy', 'forge', 'weapon'].some((w) => nameLower.includes(w))
+    const baseItems = isArmory ? armoryItems : isTavern ? tavernItems : generalItems
 
-      loc.containers.push({
-        id: `${loc.id}_shop`,
-        name: `${loc.name} counter`,
+    const shopItems = baseItems.map((si, i) => ({
+      ...si,
+      item: { ...si.item, id: `${loc.id}_shop_${i}` },
+    }))
+
+    loc.containers.push({
+      id: `${loc.id}_shop`,
+      name: isTavern ? 'bar menu' : isArmory ? 'weapons rack' : `${loc.name} counter`,
+      tags: ['shop'],
+      searchDifficulty: 0,
+      searchCount: 0,
+      lastSearchTick: 0,
+      expectedItemTypes: ['general'],
+      isShop: true,
+      shopInventory: shopItems,
+      currencyName,
+    })
+    shopAdded = true
+  }
+
+  // Guarantee at least one shop — pick the most "public" location
+  if (!shopAdded) {
+    const publicLoc = locations.find((l) => l.isPublic) ?? locations[0]
+    if (publicLoc) {
+      const shopItems = generalItems.map((si, i) => ({
+        ...si,
+        item: { ...si.item, id: `${publicLoc.id}_shop_${i}` },
+      }))
+      publicLoc.containers.push({
+        id: `${publicLoc.id}_shop`,
+        name: 'trading post',
         tags: ['shop'],
         searchDifficulty: 0,
         searchCount: 0,
