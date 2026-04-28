@@ -334,7 +334,7 @@ Generate their ACTUAL conversation — real dialogue with real outcomes. JSON fo
   "summary": "2-3 sentence description of what happened AND what was decided/agreed/refused",
   "concluded": true or false,
   "outcome": {
-    "agreement_reached": "what they agreed to do together" or null,
+    "agreement_reached": "SPECIFIC commitment: who will do WHAT. e.g. 'Mirella will embrace nudity as a symbol of unity' or 'Both will meet at the tower at dawn'. Be concrete — vague agreements are useless." or null,
     "item_transferred": { "from": "npc name", "to": "npc name", "item": "item name" } or null,
     "conflict": "description of conflict or confrontation" or null
   },
@@ -478,7 +478,7 @@ Generate their conversation. JSON:
   "dialogue": [{"speaker": "Name", "says": "*action* \\"speech\\""}],
   "summary": "2-3 sentences: what happened and what changed",
   "concluded": false,
-  "outcome": {"agreement_reached": null, "item_transferred": null, "conflict": null},
+  "outcome": {"agreement_reached": "SPECIFIC: who commits to WHAT action — be concrete, not vague" or null, "item_transferred": null, "conflict": null},
   "takeaways": {
     ${takeawayKeys}
   }

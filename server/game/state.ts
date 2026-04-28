@@ -492,6 +492,18 @@ export function addNpcAgreement(
 
   const updated: NPC = { ...npc, agreements: trimmed }
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+
+  // Auto-apply tags implied by the agreement content
+  const contentLower = content.toLowerCase()
+  const tagInferences: string[] = []
+  if (contentLower.includes('nude') || contentLower.includes('nudity') || contentLower.includes('undress') || contentLower.includes('naked')) tagInferences.push('add:nude')
+  if (contentLower.includes('armed') || contentLower.includes('weapon') || contentLower.includes('sword')) tagInferences.push('add:armed')
+  if (contentLower.includes('disguise') || contentLower.includes('costume')) tagInferences.push('add:disguised')
+  if (contentLower.includes('hide') || contentLower.includes('hiding') || contentLower.includes('covert')) tagInferences.push('add:hiding')
+  if (contentLower.includes('protect') || contentLower.includes('guard')) tagInferences.push('add:determined')
+  if (tagInferences.length > 0) {
+    updateNpcStateFlags(npcId, tagInferences)
+  }
 }
 
 export function updateNpcPlan(npcId: string, plan: NPC['activePlan']): void {

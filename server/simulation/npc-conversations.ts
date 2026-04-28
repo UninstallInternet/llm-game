@@ -462,6 +462,20 @@ export function applyGroupResult(result: NpcConversationResult, world: WorldStat
           addNpcAgreement(result.participantIds[j], result.participantIds[i], result.outcome.agreement_reached, result.tick)
         }
       }
+      // Trigger replanning for ALL participants — the agreement should reshape their goals
+      import('../simulation/npc-planner.js').then(({ formPlan }) => {
+        for (const pid of result.participantIds) {
+          const npcForReplan = world.npcs.find((n) => n.id === pid)
+          if (npcForReplan) {
+            formPlan(npcForReplan, world).then((plan) => {
+              if (plan) {
+                updateNpcPlan(pid, plan)
+                import('../game/state.js').then(({ persistGame: p }) => p()).catch(() => {})
+              }
+            }).catch(() => {})
+          }
+        }
+      }).catch(() => {})
     }
 
     // Apply conflict/physical outcomes from conversations
