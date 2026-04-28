@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/index.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  postgres_data:
+
+networks:
+  app_network:
+    driver: bridge
