@@ -21,8 +21,8 @@ export const KNOWLEDGE_RELEVANCE_WINDOW = 20
 
 export const LLM_MODELS = {
   worldGen: 'gpt-4o',
-  conversation: 'gpt-4o-mini',
-  simulation: 'gpt-4o-mini',
+  conversation: 'gpt-4.1-mini',
+  simulation: 'gpt-4.1-mini',
 } as const
 
 export const MAX_CONVERSATION_HISTORY = 20
