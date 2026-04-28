@@ -17,12 +17,12 @@ export const gameRoutes = Router()
 
 // Auto-load the most recent save on first request
 let autoLoaded = false
-function autoLoadLastSave(): void {
+async function autoLoadLastSave(): Promise<void> {
   if (autoLoaded) return
   autoLoaded = true
-  const saves = listSaves()
+  const saves = await listSaves()
   if (saves.length > 0) {
-    const loaded = loadSavedGame(saves[0].id)
+    const loaded = await loadSavedGame(saves[0].id)
     if (loaded) {
       console.log(`Auto-loaded save: ${saves[0].name}`)
       startSimulation()
@@ -64,7 +64,7 @@ gameRoutes.post('/new', async (req, res) => {
     }
 
     setWorldAndPlayer(world, player)
-    persistGame()
+    await persistGame()
     autoLoaded = true
     startSimulation()
 
@@ -79,8 +79,8 @@ gameRoutes.post('/new', async (req, res) => {
   }
 })
 
-gameRoutes.get('/state', (_req, res) => {
-  autoLoadLastSave()
+gameRoutes.get('/state', async (_req, res) => {
+  await autoLoadLastSave()
 
   if (!isGameActive()) {
     res.json({ success: false, error: 'No active game' } satisfies ApiResponse<never>)
@@ -94,16 +94,16 @@ gameRoutes.get('/state', (_req, res) => {
   res.json(response)
 })
 
-gameRoutes.post('/save', (_req, res) => {
+gameRoutes.post('/save', async (_req, res) => {
   if (!isGameActive()) {
     res.json({ success: false, error: 'No active game' } satisfies ApiResponse<never>)
     return
   }
-  persistGame()
+  await persistGame()
   res.json({ success: true, data: { message: 'Game saved' } })
 })
 
-gameRoutes.post('/load', (req, res) => {
+gameRoutes.post('/load', async (req, res) => {
   const { saveId } = req.body as { saveId: string }
   if (!saveId) {
     res.json({ success: false, error: 'saveId required' } satisfies ApiResponse<never>)
@@ -111,7 +111,7 @@ gameRoutes.post('/load', (req, res) => {
   }
 
   stopSimulation()
-  const loaded = loadSavedGame(saveId)
+  const loaded = await loadSavedGame(saveId)
   if (!loaded) {
     res.json({ success: false, error: 'Save not found' } satisfies ApiResponse<never>)
     return
@@ -127,7 +127,7 @@ gameRoutes.post('/load', (req, res) => {
   res.json(response)
 })
 
-gameRoutes.get('/saves', (_req, res) => {
-  const saves = listSaves()
+gameRoutes.get('/saves', async (_req, res) => {
+  const saves = await listSaves()
   res.json({ success: true, data: saves })
 })

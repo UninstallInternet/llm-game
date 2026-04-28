@@ -137,7 +137,7 @@ JSON only:
         }
 
         onPlayerAction()
-        persistGame()
+        await persistGame()
 
         res.json({
           success: true,
@@ -230,7 +230,7 @@ JSON only:
           action: `Searched ${unsearched.name}`,
           result: `Found ${item.name}`,
         })
-        persistGame()
+        await persistGame()
 
         // Notify witnesses
         for (const w of world.npcs.filter((n) => n.currentLocationId === player.currentLocationId && n.physical?.status === 'alive')) {
@@ -308,7 +308,7 @@ JSON only:
       item.locationId = null
       player.inventory.push(item)
       onPlayerAction()
-      persistGame()
+      await persistGame()
 
       res.json({
         success: true,
@@ -452,7 +452,7 @@ Respond with ONLY JSON:
       }
 
       onPlayerAction()
-      persistGame()
+      await persistGame()
 
       res.json({
         success: true,
@@ -534,7 +534,7 @@ Respond with ONLY JSON:
     }
 
     onPlayerAction()
-    persistGame()
+    await persistGame()
 
     const response: ApiResponse<PlayerActionResponse> = {
       success: true,

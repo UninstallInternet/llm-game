@@ -48,7 +48,7 @@ worldRoutes.get('/location/:id', (req, res) => {
   })
 })
 
-worldRoutes.post('/move', (req, res) => {
+worldRoutes.post('/move', async (req, res) => {
   if (!isGameActive()) {
     res.json({ success: false, error: 'No active game' } satisfies ApiResponse<never>)
     return
@@ -78,7 +78,7 @@ worldRoutes.post('/move', (req, res) => {
 
   // Advance simulation and persist
   onPlayerAction()
-  persistGame()
+  await persistGame()
 
   res.json({
     success: true,
