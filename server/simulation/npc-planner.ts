@@ -8,6 +8,9 @@ import {
   applyPhysicalEffects,
   updateNpcRelationship,
   updateNpcPlan,
+  completeAgreement,
+  persistGame,
+  updateNpcStateFlags,
 } from '../game/state.js'
 import { llmFunctionCall } from '../llm/client.js'
 import { PLAN_SCHEMA } from '../llm/schemas.js'
@@ -117,10 +120,17 @@ export async function formPlan(npc: NPC, world: WorldState): Promise<NpcPlan | n
     .filter((n) => n.id !== npc.id)
     .map((n) => {
       const rel = npc.relationships.find((r) => r.targetNpcId === n.id)
+      const sameLocation = n.currentLocationId === npc.currentLocationId ? ' [HERE NOW]' : ''
+      const statusStr = n.physical.status !== 'alive' ? ` [${n.physical.status}]` : ''
+      const tagStr = (n.stateFlags ?? []).length > 0 ? ` {${n.stateFlags.join(', ')}}` : ''
       if (rel) {
-        return `${n.name} (${n.occupation}): ${rel.type}, trust:${rel.trust}, affection:${rel.affection}`
+        const threat = (rel.type === 'enemy' || rel.type === 'rival') ? ' HOSTILE' : (rel.type === 'friend' || rel.trust > 50) ? ' ALLY' : ''
+        return `${n.name} (${n.occupation}): ${rel.type}, trust:${rel.trust}${threat}${sameLocation}${statusStr}${tagStr}`
       }
-      return `${n.name} (${n.occupation}): no relationship`
+      // Check faction — different faction = potential enemy
+      const differentFaction = npc.factionId && n.factionId && npc.factionId !== n.factionId
+      const factionLabel = differentFaction ? ' ⚔ ENEMY FACTION' : ''
+      return `${n.name} (${n.occupation}): no relationship${factionLabel}${sameLocation}${statusStr}${tagStr}`
     })
     .join('\n  ')
 
@@ -142,6 +152,32 @@ CHARACTER:
   Secret goal: ${npc.goals.secret}
   Mood: ${npc.mood.current}
   Health: ${npc.physical?.health ?? 100}/100 ${(npc.physical?.injuries?.length ?? 0) > 0 ? `(injuries: ${npc.physical!.injuries.join(', ')})` : ''}
+  Status: ${npc.physical.status}${(npc.stateFlags ?? []).length > 0 ? ` [${npc.stateFlags.join(', ')}]` : ''}
+${(() => {
+    const flags = npc.stateFlags ?? []
+    const warnings: string[] = []
+    if (flags.some((f) => ['restrained', 'tied_up', 'sleeping', 'unconscious'].includes(f))) {
+      warnings.push('You are IMMOBILIZED. You CANNOT travel or take physical actions. You CAN only talk, shout, beg, or persuade. Plan to get freed.')
+    }
+    if ((flags.includes('injured') || flags.includes('bleeding')) && npc.physical.health < 60) {
+      warnings.push('You are SERIOUSLY INJURED. Seek healing, bandages, or retreat. Your combat effectiveness is heavily reduced.')
+    }
+    if (flags.includes('scared')) {
+      warnings.push('You are SCARED. You should avoid confrontation and consider fleeing, hiding, or seeking allies for protection.')
+    }
+    if (flags.includes('armed')) {
+      warnings.push('You are ARMED. You have a significant advantage in combat. Use it if needed.')
+    }
+    if (flags.includes('drunk')) {
+      warnings.push('You are DRUNK. Your coordination and judgment are impaired. Avoid precision tasks.')
+    }
+    if (npc.physical.health < 20) {
+      warnings.push('CRITICAL: You are near death. Retreat, find a healer, or hide immediately.')
+    } else if (npc.physical.health < 40) {
+      warnings.push('Your health is dangerously low. Seek healing before fighting again.')
+    }
+    return warnings.length > 0 ? `  YOUR CONDITION:\n  ${warnings.join('\n  ')}` : ''
+  })()}
   Inventory: ${(npc.inventory ?? []).map((i) => `${i.name} [${(i.tags ?? []).join(',')}]`).join(', ') || 'nothing'}
 
 CURRENT LOCATION:
@@ -153,12 +189,42 @@ PEOPLE HERE RIGHT NOW:
 WHAT ${npc.name.toUpperCase()} KNOWS:
   ${topMemories || 'nothing notable'}
 
+${(() => {
+    const activeAgreements = (npc.agreements ?? []).filter((a) => a.active)
+    if (activeAgreements.length === 0) return ''
+    const lines = activeAgreements.map((a) => {
+      const other = a.withId === 'player' ? 'the visitor' : world.npcs.find((n) => n.id === a.withId)?.name ?? a.withId
+      const ticksAgo = world.currentTick - (a.madeAtTick ?? 0)
+      return `- With ${other} (${ticksAgo} ticks ago): ${a.content}`
+    }).join('\n')
+    return `ACTIVE COMMITMENTS YOU MUST HONOR:
+${lines}
+Your plan MUST include steps to fulfill these commitments. Integrate them with your secret goal — pursue BOTH.`
+  })()}
+
 ALL KNOWN PEOPLE:
   ${knownPeople}
 
 ALL LOCATIONS:
 ${locationDetails}
 
+${(() => {
+    // Detect hostile NPCs and add combat context
+    const enemies = world.npcs.filter((n) => {
+      if (n.id === npc.id) return false
+      const rel = npc.relationships.find((r) => r.targetNpcId === n.id)
+      if (rel && (rel.type === 'enemy' || rel.type === 'rival' || rel.trust < -30)) return true
+      if (npc.factionId && n.factionId && npc.factionId !== n.factionId) return true
+      return false
+    })
+    if (enemies.length > 0) {
+      return `ENEMIES (you should FIGHT or SABOTAGE these people, not talk to them):
+${enemies.map((e) => `  - ${e.name} (${e.occupation}) at ${world.locations.find((l) => l.id === e.currentLocationId)?.name ?? '?'} [HP:${e.physical.health}]`).join('\n')}
+If you encounter an enemy, your plan should include ATTACK, AMBUSH, or FIGHT steps. Do NOT try to negotiate with mortal enemies.
+`
+    }
+    return ''
+  })()}
 HOW THE WORLD WORKS:
 - You can SEARCH containers to find items. Workshops have tools, labs have equipment, kitchens have food/poison.
 - You NEED the right items for certain actions. To cut a door, you need a cutting tool. To poison someone, you need poison. PLAN to acquire items first.
@@ -171,18 +237,18 @@ HOW THE WORLD WORKS:
 
 INSTRUCTIONS:
 - Create a plan with 2-6 concrete steps to pursue your secret goal.
-- Actions can be ANYTHING: search, travel, recruit, charm, intimidate, fight, sabotage, steal, heal, build, observe, confront, seduce, deceive, hide, share_info, use_item, give_item, drop_item, barricade, sneak, repair, hack, lockpick, bribe, threaten, poison, ambush, etc.
+- Actions can be ANYTHING: search, travel, recruit, charm, intimidate, fight, sabotage, steal, heal, build, observe, confront, seduce, deceive, hide, share_info, use_item, give_item, drop_item, barricade, sneak, repair, hack, lockpick, bribe, threaten, poison, ambush, attack, kill, knock_out, restrain, etc.
 - THINK ABOUT PREREQUISITES: if you need an item, add a "search" step BEFORE the step that uses it.
-- Choose the right action for the situation. A good plan mixes social and physical actions.
+- Choose the right action for the situation. If you are enemies with someone, you might ATTACK them, not talk. If the situation is dangerous, you might FIGHT or FLEE, not negotiate.
 - Use real location IDs (loc_X) for travel targets.
-- Use real NPC names for social targets.
-- Consider who you trust, who might help, who might oppose you.
+- Use real NPC names for targets.
+- Consider who you trust, who might help, who might oppose you. ENEMIES should be fought, ALLIES should be recruited.
 - Consider what items you already have and what you still need.
 - Consider security levels — high-security areas need preparation.
-- Be realistic about your skills. A scientist shouldn't plan to fight a guard.
-- If your plan involves another person, include a step to TALK to them first.
-- Your personality should influence your approach (cautious vs bold, honest vs deceptive).
-- NEVER create passive steps like "wait", "hope", "think about it", "see what happens". Every step must be a concrete ACTION you perform. If you need information from someone, go ask them. If you need to observe, go observe actively.
+- Be realistic about your skills but also about the situation. A warrior seeing an enemy should fight, not negotiate. A spy should sneak, not confront openly.
+- Your personality should influence your approach (cautious vs bold, honest vs deceptive, violent vs peaceful).
+- NEVER create passive steps like "wait", "hope", "think about it", "see what happens". Every step must be a concrete ACTION you perform.
+- If the setting is violent (war, battle, siege, combat), your plan should include COMBAT actions: attack, ambush, fight, kill. Do NOT default to talking when violence is called for.
 - If a previous plan was completed, create a NEW plan that builds on what you achieved.
 
 Respond with ONLY JSON:
@@ -248,6 +314,20 @@ export async function executeCurrentStep(
     return { executed: false, description: 'Plan completed' }
   }
 
+  // Immobilized NPCs can only execute social/talk steps, not travel/search/physical
+  const { IMMOBILIZING_TAGS: IMM_TAGS } = await import('../../shared/constants.js')
+  const npcIsImmobilized = (npc.stateFlags ?? []).some((f) => IMM_TAGS.has(f))
+  if (npcIsImmobilized) {
+    const isSocialStep = ['talk', 'ask', 'tell', 'confront', 'persuade', 'beg', 'plead', 'shout', 'call', 'negotiate', 'charm', 'convince'].some((w) => currentStep.description.toLowerCase().includes(w))
+    if (!isSocialStep) {
+      // Skip non-social steps — fail them since NPC can't physically act
+      currentStep.status = 'failed'
+      currentStep.result = 'Cannot act — immobilized'
+      updateNpcPlan(npc.id, npc.activePlan)
+      return { executed: false, description: `${npc.name} can't do this while immobilized` }
+    }
+  }
+
   // Stale timeout — any step active for 5+ ticks auto-fails
   const stepAge = world.currentTick - (npc.activePlan.formedAtTick ?? 0)
   if (stepAge > 5 && currentStep.status === 'active') {
@@ -276,18 +356,23 @@ export async function executeCurrentStep(
     if (targetedNpc) {
       const targetNpcsHere = [targetedNpc].filter((n) => n.currentLocationId === npc.currentLocationId)
 
-      // Nobody matching the description is here
+      // Nobody matching the description is here — auto-travel to find them
       if (targetNpcsHere.length === 0) {
-        // Check if we've been waiting here for 2+ ticks already
-        const waitAttempts = parseInt(currentStep.result?.match(/wait (\d+)/)?.[1] ?? '0', 10)
-        if (waitAttempts >= 2) {
-          currentStep.status = 'failed'
-          currentStep.result = 'Nobody matching the target is here — giving up'
-          updateNpcPlan(npc.id, npc.activePlan)
-          return { executed: false, description: `${npc.name} realizes nobody they need is here and moves on` }
+        if (targetedNpc.currentLocationId !== npc.currentLocationId) {
+          const fromLoc = npc.currentLocationId
+          moveNpc(npc.id, targetedNpc.currentLocationId)
+          broadcastEvent({
+            type: 'npc_moved',
+            data: { npcId: npc.id, fromLocationId: fromLoc, toLocationId: targetedNpc.currentLocationId },
+          })
+          currentStep.result = `Traveling to find ${targetedNpc.name}`
+          return { executed: true, description: `${npc.name} goes to find ${targetedNpc.name}` }
         }
-        currentStep.result = `wait ${waitAttempts + 1} — target not present`
-        return { executed: true, description: `${npc.name} waits for the right person but they're not here` }
+        // Same location but somehow not found — shouldn't happen, fail gracefully
+        currentStep.status = 'failed'
+        currentStep.result = 'Target not reachable'
+        updateNpcPlan(npc.id, npc.activePlan)
+        return { executed: false, description: `${npc.name} can't reach ${targetedNpc.name}` }
       }
     }
   }
@@ -355,18 +440,74 @@ export async function executeCurrentStep(
         break
       }
 
+      // Check if this is a VIOLENT action that should go through the GM, not conversation
+      const isViolentAction = ['attack', 'fight', 'kill', 'stab', 'slash', 'punch', 'ambush',
+        'knock', 'shoot', 'strike', 'hit', 'tackle', 'assassinate', 'murder', 'execute']
+        .some((a) => currentStep.action.toLowerCase().includes(a) || descLower.includes(a))
+
+      // If violent, skip conversation and route directly through Game Master
+      if (isViolentAction && targetNpcForStep && targetNpcForStep.currentLocationId === npc.currentLocationId) {
+        result = await executeAttempt(npc, currentStep, world)
+        break
+      }
+
       // If targeting a co-located NPC with a social action, trigger a REAL conversation
       const isSocialAction = ['confront', 'recruit', 'talk', 'approach', 'ask', 'tell',
         'persuade', 'charm', 'seduce', 'intimidate', 'negotiate', 'share_info', 'bribe']
         .some((a) => currentStep.action.toLowerCase().includes(a) || descLower.includes(a))
 
       if (targetNpcForStep && targetNpcForStep.currentLocationId === npc.currentLocationId && isSocialAction) {
-        // Check if we've been trying this for too long (max 3 attempts)
+        // Re-read the fresh plan from state — the conversation system may have already completed this step
+        const freshNpc = getNpc(npc.id)
+        const freshStep = freshNpc?.activePlan?.steps.find((s) => s.description === currentStep.description)
+        if (freshStep && freshStep.status === 'completed') {
+          currentStep.status = 'completed'
+          currentStep.result = freshStep.result ?? 'Completed via conversation'
+          result = { executed: true, description: `${npc.name} talked with ${targetNpcForStep.name}` }
+          break
+        }
+
+        // Check if a conversation with the target already happened recently
+        const targetFirstName = targetNpcForStep.name.split(' ')[0].toLowerCase()
+        const recentConvoWithTarget = (freshNpc ?? npc).knowledge.some((k) =>
+          k.turnLearned >= world.currentTick - 3 &&
+          k.source.includes('conversation') &&
+          k.source.toLowerCase().includes(targetFirstName)
+        )
+        if (recentConvoWithTarget) {
+          // Check if this action should produce real world-state consequences (not just conversation)
+          const isPhysicalAction = [
+            // Combat/force
+            'arrest', 'attack', 'fight', 'restrain', 'steal', 'sabotage', 'poison', 'ambush', 'knock out', 'tie up', 'punch', 'shove', 'lock up',
+            // Social with physical consequences
+            'seduce', 'undress', 'dress', 'strip', 'disguise', 'heal', 'bandage', 'feed', 'drug', 'intoxicate',
+            // World manipulation
+            'break', 'destroy', 'barricade', 'hide', 'plant', 'set fire', 'unlock', 'lock', 'repair', 'build', 'forge',
+            // Item actions
+            'give', 'hand over', 'drop', 'place', 'swap', 'trade',
+          ].some((a) => descLower.includes(a))
+          if (isPhysicalAction && targetNpcForStep) {
+            // Route through Game Master for real physical consequences
+            result = await executeAttempt(npc, currentStep, world)
+          } else {
+            const convoK = (freshNpc ?? npc).knowledge.find((k) =>
+              k.turnLearned >= world.currentTick - 3 &&
+              k.source.includes('conversation') &&
+              k.source.toLowerCase().includes(targetFirstName)
+            )
+            currentStep.status = 'completed'
+            currentStep.result = `Conversation happened: ${convoK?.content?.slice(0, 50) ?? 'discussed the matter'}`
+            result = { executed: true, description: `${npc.name} talked with ${targetNpcForStep.name}` }
+          }
+          break
+        }
+
+        // Check if we've been trying this for too long (max 2 attempts)
         const attempts = (currentStep.result?.match(/attempt (\d+)/)?.[1] ?? '0')
         const attemptCount = parseInt(attempts, 10)
 
-        if (attemptCount >= 3) {
-          // Give up after 3 tries — complete with partial result
+        if (attemptCount >= 2) {
+          // Give up after 2 tries — complete with partial result
           currentStep.status = 'completed'
           currentStep.result = `Tried to talk to ${targetNpcForStep.name} but could not reach agreement`
           result = { executed: true, description: `${npc.name} gives up trying to convince ${targetNpcForStep.name}` }
@@ -400,17 +541,51 @@ export async function executeCurrentStep(
       break
   }
 
+  // Check if completed step fulfills an active agreement (keyword overlap)
+  if (currentStep.status === 'completed' && currentStep.result) {
+    const stepWords = new Set(
+      `${currentStep.description} ${currentStep.result}`.toLowerCase().split(/\s+/).filter((w) => w.length > 3)
+    )
+    for (const agr of (npc.agreements ?? []).filter((a) => a.active)) {
+      const agrWords = agr.content.toLowerCase().split(/\s+/).filter((w) => w.length > 3)
+      const overlap = agrWords.filter((w) => stepWords.has(w)).length
+      if (overlap >= 3 || (agrWords.length > 0 && overlap / agrWords.length > 0.4)) {
+        completeAgreement(npc.id, agr.content)
+        console.log(`[Agreement Completed] ${npc.name}: "${agr.content.slice(0, 50)}"`)
+      }
+    }
+  }
+
   // Advance to next step on completion OR failure
   if (currentStep.status === 'completed' || currentStep.status === 'failed') {
-    const nextPending = npc.activePlan.steps.find((s) => s.status === 'pending')
-    if (nextPending) {
-      nextPending.status = 'active'
-    } else if (npc.activePlan.steps.every((s) => s.status === 'completed' || s.status === 'failed' || s.status === 'skipped')) {
-      npc.activePlan.status = 'completed'
+    // Check if too many steps have failed — abandon plan and replan
+    const failedCount = npc.activePlan.steps.filter((s) => s.status === 'failed').length
+    if (failedCount >= 3) {
+      npc.activePlan.status = 'abandoned'
+      addNpcKnowledge(npc.id, [{
+        id: uuid(),
+        content: `My plan "${npc.activePlan.goal}" has mostly failed. I need a completely new approach.`,
+        source: 'self — plan abandoned',
+        confidence: 1.0,
+        importance: 0.8,
+        turnLearned: world.currentTick,
+        isSecret: false,
+      }])
       broadcastEvent({
         type: 'npc_plan',
-        data: { npcId: npc.id, goal: npc.activePlan.goal, status: 'completed', stepCount: npc.activePlan.steps.length },
+        data: { npcId: npc.id, goal: npc.activePlan.goal, status: 'abandoned', stepCount: npc.activePlan.steps.length },
       })
+    } else {
+      const nextPending = npc.activePlan.steps.find((s) => s.status === 'pending')
+      if (nextPending) {
+        nextPending.status = 'active'
+      } else if (npc.activePlan.steps.every((s) => s.status === 'completed' || s.status === 'failed' || s.status === 'skipped')) {
+        npc.activePlan.status = 'completed'
+        broadcastEvent({
+          type: 'npc_plan',
+          data: { npcId: npc.id, goal: npc.activePlan.goal, status: 'completed', stepCount: npc.activePlan.steps.length },
+        })
+      }
     }
   }
 
@@ -510,8 +685,8 @@ async function executeSearch(npc: NPC, step: PlanStep, world: WorldState): Promi
     return { executed: true, description: `${npc.name} searches the ${unsearched.name} and finds a ${item.name}!` }
   }
 
+  step.status = 'completed'
   step.result = 'Searched but found nothing useful'
-  // Don't fail — let them try again next tick or move on
   return { executed: true, description: `${npc.name} searches the ${unsearched.name} but finds nothing useful` }
 }
 
@@ -529,14 +704,14 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
     actor: {
       name: npc.name,
       occupation: npc.occupation,
-      tags: npc.occupationTags,
+      tags: [...npc.occupationTags, ...(npc.stateFlags ?? [])],
       health: npc.physical.health,
       injuries: npc.physical.injuries,
     },
     action: step.description,
     target: {
       name: targetNpc?.name ?? step.target,
-      tags: targetNpc?.occupationTags ?? [],
+      tags: [...(targetNpc?.occupationTags ?? []), ...(targetNpc?.stateFlags ?? [])],
       health: targetNpc?.physical.health,
     },
     environment: { name: location?.name ?? 'unknown', tags: location?.tags ?? [] },
@@ -558,6 +733,17 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
         injury: gmResult.effects.targetInjury,
         statusChange: gmResult.effects.targetStatusChange,
       })
+      // Apply GM-determined tags
+      if (gmResult.effects.targetTagChanges?.length > 0) {
+        updateNpcStateFlags(targetNpc.id, gmResult.effects.targetTagChanges)
+      }
+      if (gmResult.effects.actorTagChanges?.length > 0) {
+        updateNpcStateFlags(npc.id, gmResult.effects.actorTagChanges)
+      }
+      // Fallback: any damage = injured tag
+      if (gmResult.effects.targetHealthDelta < 0 && !(gmResult.effects.targetTagChanges ?? []).some((t: string) => t.includes('injured'))) {
+        updateNpcStateFlags(targetNpc.id, ['add:injured'])
+      }
       if (gmResult.effects.relationshipImpact !== 0) {
         updateNpcRelationship(npc.id, targetNpc.id, {
           affection: gmResult.effects.relationshipImpact,
@@ -568,7 +754,7 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
       // Target NPC becomes aware of what happened
       addNpcKnowledge(targetNpc.id, [{
         id: uuid(),
-        content: `${npc.name} ${result.outcome === 'failure' ? 'tried to' : 'successfully'} ${step.description} ${result.outcome !== 'failure' ? '— it worked' : '— but failed'}. ${result.narrativeHint}`,
+        content: `${npc.name} ${result.outcome === 'failure' ? 'attempted something but failed' : 'did something successfully'}: ${result.narrativeHint}`,
         source: 'experienced',
         confidence: 1.0,
         importance: 0.9,
@@ -610,7 +796,7 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
     step.status = 'failed'
     addNpcKnowledge(npc.id, [{
       id: uuid(),
-      content: `Failed to ${step.description}. ${result.narrativeHint}`,
+      content: `Attempted but failed: ${result.narrativeHint}`,
       source: 'observed',
       confidence: 1.0,
       importance: 0.6,
@@ -623,7 +809,7 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
   step.status = 'completed'
   addNpcKnowledge(npc.id, [{
     id: uuid(),
-    content: `Successfully ${step.description}. ${result.narrativeHint}`,
+    content: result.narrativeHint,
     source: 'observed',
     confidence: 1.0,
     importance: 0.8,
@@ -636,6 +822,9 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
     console.log(`[Discovery] ${npc.name} triggers discovery at ${location.name}`)
     await generateDiscovery(npc, location, step.description, world)
   }
+
+  // Persist physical effects immediately
+  await persistGame()
 
   return { executed: true, description: `${npc.name} ${step.description} — ${result.narrativeHint}` }
 }
@@ -691,10 +880,9 @@ export async function processNpcTurn(
     return { action: `${npc.physical.status}`, llmCalls: 0 }
   }
 
-  // Restrained NPCs can only plan escape, not execute other steps
-  if (npc.physical.status === 'restrained' && npc.activePlan?.goal?.toLowerCase().includes('escape') === false) {
-    return { action: 'restrained', llmCalls: 0 }
-  }
+  // Immobilized NPCs can still plan and talk, but can't physically move or execute non-social steps
+  const { IMMOBILIZING_TAGS } = await import('../../shared/constants.js')
+  const isImmobilized = (npc.stateFlags ?? []).some((f) => IMMOBILIZING_TAGS.has(f))
 
   // Clear completed/abandoned plans so NPCs can form new ones
   if (npc.activePlan?.status === 'completed' || npc.activePlan?.status === 'abandoned') {

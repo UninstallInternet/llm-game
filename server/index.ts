@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import path from 'path'
 import { gameRoutes } from './routes/game.js'
 import { chatRoutes } from './routes/chat.js'
 import { worldRoutes } from './routes/world.js'
@@ -13,6 +14,7 @@ const PORT = parseInt(process.env.PORT || '3001', 10)
 
 app.use(cors())
 app.use(express.json())
+app.use('/portraits', express.static(path.join(process.cwd(), 'public', 'portraits')))
 
 app.use('/api/game', gameRoutes)
 app.use('/api/chat', chatRoutes)

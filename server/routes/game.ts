@@ -61,6 +61,7 @@ gameRoutes.post('/new', async (req, res) => {
       inventory: [],
       physical: { health: 100, energy: 100, injuries: [], status: 'alive' },
       actionLog: [],
+      currency: 50,
     }
 
     setWorldAndPlayer(world, player)

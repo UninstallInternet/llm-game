@@ -4,7 +4,10 @@ import {
   advanceTime,
   persistGame,
   isNpcBusy,
+  completeMeeting,
+  addNpcKnowledge,
 } from '../game/state.js'
+import { v4 as uuid } from 'uuid'
 import { broadcastEvent } from '../routes/events.js'
 import { moveNpcsToSchedule } from './npc-behavior.js'
 import { propagateInfo } from './info-share.js'
@@ -53,6 +56,33 @@ async function runTick(): Promise<void> {
       broadcastEvent({ type: 'npc_moved', data: move })
     }
 
+    // 2.5 Meeting cleanup — mark meetings as kept or missed
+    const worldForMeetings = getWorld()
+    for (const npc of worldForMeetings.npcs) {
+      for (const meeting of (npc.scheduledMeetings ?? []).filter((m) => m.status === 'pending')) {
+        if (meeting.tick < worldForMeetings.currentTick - 3) {
+          // Meeting time passed — check if both were at the location
+          const other = worldForMeetings.npcs.find((n) => n.id === meeting.withId)
+          if (other && npc.currentLocationId === meeting.locationId && other.currentLocationId === meeting.locationId) {
+            completeMeeting(npc.id, meeting.withId)
+            completeMeeting(meeting.withId, npc.id)
+          } else {
+            // Missed meeting
+            addNpcKnowledge(npc.id, [{
+              id: uuid(),
+              content: `${other?.name ?? 'Someone'} missed our scheduled meeting about: ${meeting.purpose.slice(0, 50)}`,
+              source: 'observed',
+              confidence: 1.0,
+              importance: 0.6,
+              turnLearned: worldForMeetings.currentTick,
+              isSecret: false,
+            }])
+            completeMeeting(npc.id, meeting.withId) // mark as kept to stop re-checking
+          }
+        }
+      }
+    }
+
     // 3. Silent info propagation
     const shares = propagateInfo()
     for (const share of shares) {
@@ -70,7 +100,9 @@ async function runTick(): Promise<void> {
       if (llmBudget <= 0) break
       if (isNpcBusy(npc.id)) continue
 
-      const result = await processNpcTurn(npc, updatedWorld)
+      // Re-read fresh NPC state (conversations may have completed plan steps)
+      const freshNpc = getWorld().npcs.find((n) => n.id === npc.id) ?? npc
+      const result = await processNpcTurn(freshNpc, getWorld())
       llmBudget -= result.llmCalls
     }
 

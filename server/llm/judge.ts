@@ -1,5 +1,6 @@
 import { llmCall } from './client.js'
 import type { JudgeResult, NPC, Location, Item, PhysicalState } from '../../shared/types.js'
+import { TAG_EFFECTS } from '../../shared/constants.js'
 
 export interface JudgeInput {
   actor: { name: string; occupation: string; tags: string[]; health?: number; injuries?: string[] }
@@ -11,15 +12,17 @@ export interface JudgeInput {
 
 export interface GameMasterResult extends JudgeResult {
   effects: {
-    actorHealthDelta: number        // negative = damage, positive = healing
+    actorHealthDelta: number
     targetHealthDelta: number
     actorEnergyDelta: number
-    actorInjury: string | null      // new injury description
+    actorInjury: string | null
     targetInjury: string | null
     actorStatusChange: PhysicalState['status'] | null
     targetStatusChange: PhysicalState['status'] | null
-    itemConsumed: boolean           // was an item used up?
-    relationshipImpact: number      // -10 to +10 on the actor→target relationship
+    itemConsumed: boolean
+    relationshipImpact: number
+    actorTagChanges: string[]
+    targetTagChanges: string[]
   }
 }
 
@@ -28,13 +31,26 @@ function buildGameMasterPrompt(input: JudgeInput): string {
   const actorInjuries = input.actor.injuries?.length ? `Injuries: ${input.actor.injuries.join(', ')}` : ''
   const targetHealth = input.target.health != null ? `Health: ${input.target.health}/100` : ''
 
+  // Compute tag modifiers for the actor
+  const actorTagMods: string[] = []
+  for (const tag of input.actor.tags) {
+    const effect = TAG_EFFECTS[tag]
+    if (effect?.probabilityModifiers) {
+      const mods = Object.entries(effect.probabilityModifiers)
+        .filter(([, v]) => v !== 0 && v !== undefined)
+        .map(([k, v]) => `${k}: ${v! > 0 ? '+' : ''}${v}%`)
+      if (mods.length > 0) actorTagMods.push(`${tag} (${mods.join(', ')})`)
+    }
+  }
+  const tagModStr = actorTagMods.length > 0 ? `\nTag modifiers on actor: ${actorTagMods.join('; ')}. Adjust probability accordingly.` : ''
+
   return `You are the Game Master of a text adventure. You adjudicate ANY action an NPC attempts — physical, social, technical, creative, or combat. Be realistic and grounded. No magic.
 
 Actor: ${input.actor.name} (${input.actor.occupation}) [${input.actor.tags.join(', ')}] ${actorHealth} ${actorInjuries}
 Action: ${input.action}
 Target: ${input.target.name} [${input.target.tags.join(', ')}] ${targetHealth}
 Environment: ${input.environment.name} [${input.environment.tags.join(', ')}]
-Context: ${input.context}
+Context: ${input.context}${tagModStr}
 
 PROBABILITY BANDS:
 - 5-15%: Far outside capabilities, no skill, bad conditions
@@ -47,23 +63,41 @@ For COMBAT: Consider size, training, weapons, injuries, surprise. Unarmed vs arm
 For SOCIAL (charm, seduce, intimidate, deceive): Consider personality match, relationship, context. Charisma matters.
 For TECHNICAL: Consider occupation tags, tools available, complexity.
 
+EFFECT RULES (CRITICAL — follow these exactly):
+- COMBAT (punch/kick/stab/slash/shoot): targetHealthDelta MUST be -5 to -40. A punch = -5 to -15. A sword = -15 to -35. Set targetInjury describing the wound.
+- SOCIAL (talk/charm/persuade/intimidate): healthDeltas should be 0. Use relationshipImpact instead.
+- HEALING (heal/bandage/treat): targetHealthDelta should be POSITIVE (+10 to +30).
+- RESTRAINT (arrest/tie/restrain): set targetStatusChange to "restrained".
+- SEDUCTION (seduce/undress): set relationshipImpact, no health change.
+- On FAILURE: the actor may take damage instead. Flip who gets hurt.
+- If target HP would reach 0: set targetStatusChange to "unconscious" or "dead".
+- NEVER leave targetHealthDelta at 0 for combat actions that succeed.
+- ALWAYS set appropriate tags on affected characters (see tag fields below).
+
 Respond with ONLY JSON:
 {
   "probability": 1-99,
   "reasoning": "why this probability (1 sentence)",
-  "narrativeHint": "what happens (1-2 sentences, vivid)",
+  "narrativeHint": "what happens (1-2 sentences, vivid and specific)",
   "effects": {
-    "actorHealthDelta": 0,
-    "targetHealthDelta": 0,
+    "actorHealthDelta": -3,
+    "targetHealthDelta": -15,
     "actorEnergyDelta": -5,
-    "actorInjury": null or "injury description",
-    "targetInjury": null or "injury description",
-    "actorStatusChange": null or "unconscious" or "dead" or "restrained",
-    "targetStatusChange": null or "unconscious" or "dead" or "restrained",
+    "actorInjury": null,
+    "targetInjury": "slash wound on the arm",
+    "actorStatusChange": null,
+    "targetStatusChange": null,
     "itemConsumed": false,
-    "relationshipImpact": 0
+    "relationshipImpact": -5,
+    "actorTagChanges": [],
+    "targetTagChanges": ["add:injured", "add:bleeding"]
   }
-}`
+}
+
+TAG FORMAT: "add:tagname" or "remove:tagname". You can use ANY tag that describes the character's visible state — you are not limited to a fixed list.
+COMMON TAGS: injured, bleeding, scared, angry, armed, drunk, restrained, undressed, disguised, wet, hiding, excited, distressed, confident, suspicious, aroused, depressed, furious, panicked, focused, grieving, determined.
+CUSTOM TAGS: You can invent any tag that fits: "add:covered_in_mud", "add:on_fire", "add:hallucinating", "add:love_struck", "add:starving", "add:humiliated", "add:triumphant", etc.
+Set tags that reflect what HAPPENED. Every significant action should produce at least one tag change.`
 }
 
 function rollOutcome(probability: number): JudgeResult['outcome'] {
@@ -83,6 +117,8 @@ const DEFAULT_EFFECTS: GameMasterResult['effects'] = {
   targetStatusChange: null,
   itemConsumed: false,
   relationshipImpact: 0,
+  actorTagChanges: [],
+  targetTagChanges: [],
 }
 
 export async function judgeAction(input: JudgeInput): Promise<GameMasterResult> {
@@ -107,6 +143,26 @@ export async function judgeAction(input: JudgeInput): Promise<GameMasterResult> 
 
     // On failure, flip some effects (e.g., the actor takes damage instead of dealing it)
     const effects = { ...DEFAULT_EFFECTS, ...(parsed.effects ?? {}) }
+
+    // FORCE minimum effects for physical actions on success — LLM often returns 0
+    const actionLow = input.action.toLowerCase()
+    const isCombat = ['attack', 'stab', 'slash', 'punch', 'kick', 'hit', 'fight', 'strike', 'shoot', 'cut', 'shove', 'tackle', 'knock'].some((w) => actionLow.includes(w))
+    const isHealing = ['heal', 'bandage', 'treat', 'mend', 'tend'].some((w) => actionLow.includes(w))
+    const isRestraint = ['arrest', 'restrain', 'tie', 'handcuff', 'imprison'].some((w) => actionLow.includes(w))
+
+    if (outcome !== 'failure') {
+      if (isCombat && effects.targetHealthDelta === 0) {
+        effects.targetHealthDelta = outcome === 'strong_success' ? -20 : -10
+        if (!effects.targetInjury) effects.targetInjury = outcome === 'strong_success' ? 'deep wound from combat' : 'bruise from combat'
+      }
+      if (isHealing && effects.targetHealthDelta <= 0) {
+        effects.targetHealthDelta = outcome === 'strong_success' ? 25 : 15
+      }
+      if (isRestraint && !effects.targetStatusChange) {
+        effects.targetStatusChange = 'restrained'
+      }
+    }
+
     if (outcome === 'failure') {
       // If this was combat, the actor might get hurt instead
       if (effects.targetHealthDelta < 0) {

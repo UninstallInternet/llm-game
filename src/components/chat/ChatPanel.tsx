@@ -103,6 +103,9 @@ export function ChatPanel() {
               {(player.physical?.injuries?.length ?? 0) > 0 && (
                 <span className="text-orange-400">Hurt: {player.physical!.injuries.join(', ')}</span>
               )}
+              {(player as { currency?: number }).currency != null && (
+                <span className="text-yellow-400">${(player as { currency?: number }).currency ?? 0}</span>
+              )}
               <span className="text-gray-600 ml-auto">{showPlayerDetail ? '\u25B2' : '\u25BC'} {player.inventory?.length ?? 0} items</span>
             </div>
           </button>

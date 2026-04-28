@@ -84,6 +84,17 @@ export interface NPC {
   physical: PhysicalState
   stateFlags: string[]        // open-ended: ["handstanding", "drunk", "hiding", "bleeding"]
   agreements: Agreement[]
+  scheduledMeetings: ScheduledMeeting[]
+  currency: number
+  portraitUrl: string | null
+}
+
+export interface ScheduledMeeting {
+  withId: string          // NPC ID or "player"
+  locationId: string
+  tick: number            // when to meet
+  purpose: string
+  status: 'pending' | 'kept' | 'missed'
 }
 
 export interface Agreement {
@@ -119,6 +130,16 @@ export interface LocationContainer {
   searchCount: number     // how many times searched
   lastSearchTick: number  // when last searched
   expectedItemTypes: string[]
+  // Shop fields
+  isShop?: boolean
+  shopInventory?: ShopItem[]
+  currencyName?: string   // "gold", "credits", etc.
+}
+
+export interface ShopItem {
+  item: Item
+  price: number
+  stock: number           // -1 for unlimited
 }
 
 // ─── NPC Planning ───
@@ -245,6 +266,7 @@ export interface Player {
   inventory: Item[]
   physical: PhysicalState
   actionLog: Array<{ tick: number; action: string; result: string }>
+  currency: number
 }
 
 export interface ConversationTurn {

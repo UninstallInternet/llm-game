@@ -12,7 +12,7 @@ import { getTopMemories } from '../game/state.js'
 import { broadcastEvent } from '../routes/events.js'
 import type { NPC, WorldState } from '../../shared/types.js'
 
-const REFLECTION_INTERVAL = 12 // ticks between reflections
+const REFLECTION_INTERVAL = 8 // ticks between reflections
 
 export async function runReflections(world: WorldState): Promise<void> {
   if (world.currentTick % REFLECTION_INTERVAL !== 0 || world.currentTick === 0) return
@@ -46,7 +46,12 @@ async function reflectNpc(npc: NPC, world: WorldState): Promise<void> {
     .join('\n')
 
   const plan = npc.activePlan?.status === 'active'
-    ? `Goal: ${npc.activePlan.goal}\nSteps: ${npc.activePlan.steps.map((s) => `${s.status}: ${s.description.slice(0, 40)}`).join(', ')}`
+    ? (() => {
+        const steps = npc.activePlan!.steps
+        const failedCount = steps.filter((s) => s.status === 'failed').length
+        const doneCount = steps.filter((s) => s.status === 'completed').length
+        return `Goal: ${npc.activePlan!.goal}\nProgress: ${doneCount} done, ${failedCount} failed out of ${steps.length}\nSteps: ${steps.map((s) => `${s.status}: ${s.description.slice(0, 40)}`).join(', ')}${failedCount >= 2 ? '\nWARNING: Multiple steps have failed. Consider whether this plan is still viable.' : ''}`
+      })()
     : 'None'
 
   const player = getPlayer()

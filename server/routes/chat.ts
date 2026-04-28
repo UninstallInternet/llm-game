@@ -143,7 +143,7 @@ chatRoutes.post('/', async (req, res) => {
       updateNpcStateFlags(npcId, npcResponse.state_changes)
     }
 
-    // Record agreement + create action-triggering knowledge
+    // Record agreement + create action-triggering knowledge + immediately replan
     if (npcResponse.new_agreement) {
       addNpcAgreement(npcId, 'player', npcResponse.new_agreement, world.currentTick)
       addNpcKnowledge(npcId, [{
@@ -155,6 +155,20 @@ chatRoutes.post('/', async (req, res) => {
         turnLearned: world.currentTick,
         isSecret: false,
       }])
+
+      // Immediately replan to incorporate the agreement (async, don't block response)
+      const { formPlan } = await import('../simulation/npc-planner.js')
+      const { updateNpcPlan } = await import('../game/state.js')
+      const npcForReplan = getNpc(npcId)
+      if (npcForReplan) {
+        formPlan(npcForReplan, world).then((plan) => {
+          if (plan) {
+            updateNpcPlan(npcId, plan)
+            persistGame()
+            console.log(`[Agreement→Replan] ${npcForReplan.name}: "${plan.goal}" (${plan.steps.length} steps)`)
+          }
+        }).catch((err) => console.error(`[Agreement→Replan] Failed:`, err))
+      }
     }
 
     // Persist FIRST, then respond, then trigger tick (avoids race condition)

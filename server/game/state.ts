@@ -4,6 +4,7 @@ import type {
   Player,
   NPC,
   Location,
+  Item,
   ConversationTurn,
   GameTime,
   KnowledgeEntry,
@@ -68,6 +69,7 @@ function migratePlayer(player: Partial<Player>): Player {
     inventory: player.inventory ?? [],
     physical: player.physical ?? { health: 100, energy: 100, injuries: [], status: 'alive' as const },
     actionLog: player.actionLog ?? [],
+    currency: player.currency ?? 50,
   }
 }
 
@@ -81,6 +83,9 @@ function migrateNpc(npc: Partial<NPC>): NPC {
     physical: npc.physical ?? { health: 100, energy: 100, injuries: [], status: 'alive' as const },
     stateFlags: npc.stateFlags ?? [],
     agreements: npc.agreements ?? [],
+    scheduledMeetings: npc.scheduledMeetings ?? [],
+    currency: npc.currency ?? 0,
+    portraitUrl: npc.portraitUrl ?? null,
     knowledge: (npc.knowledge ?? []).map((k) => ({
       ...k,
       importance: k.importance ?? 0.5,
@@ -420,8 +425,28 @@ export function updateNpcStateFlags(npcId: string, changes: string[]): void {
     else flags.add(change) // default to add
   }
 
-  const updated: NPC = { ...npc, stateFlags: [...flags] }
+  const newFlags = [...flags]
+  const updated: NPC = { ...npc, stateFlags: newFlags }
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+
+  // Trigger portrait regeneration on visual state changes (async, non-blocking)
+  if (process.env.ENABLE_PORTRAITS === 'true' && currentWorld) {
+    import('../llm/portrait-generator.js').then(({ shouldRegeneratePortrait, maybeRegeneratePortrait }) => {
+      if (shouldRegeneratePortrait(npc.stateFlags ?? [], newFlags)) {
+        const freshNpc = getNpc(npcId)
+        if (freshNpc && currentWorld) {
+          maybeRegeneratePortrait(freshNpc, currentWorld.currentTick, currentWorld.name).then((url) => {
+            if (url) {
+              currentWorld!.npcs = currentWorld!.npcs.map((n) =>
+                n.id === npcId ? { ...n, portraitUrl: url } : n
+              )
+              console.log(`[Portrait Regen] ${freshNpc.name} -> ${url}`)
+            }
+          }).catch(() => {})
+        }
+      }
+    }).catch(() => {})
+  }
 }
 
 export function addNpcAgreement(
@@ -493,6 +518,114 @@ export function completeAgreement(npcId: string, agreementContent: string): void
     )
   }
 }
+
+// ─── Meeting Scheduling ───
+
+export function addScheduledMeeting(
+  npcId: string,
+  meeting: { withId: string; locationId: string; tick: number; purpose: string }
+): boolean {
+  if (!currentWorld) return false
+  const npc = getNpc(npcId)
+  if (!npc) return false
+
+  // Double-booking check: no meeting within +/-2 ticks
+  const meetings = npc.scheduledMeetings ?? []
+  const conflict = meetings.find((m) => m.status === 'pending' && Math.abs(m.tick - meeting.tick) <= 2)
+  if (conflict) return false
+
+  const newMeeting = { ...meeting, status: 'pending' as const }
+  currentWorld.npcs = currentWorld.npcs.map((n) =>
+    n.id === npcId ? { ...n, scheduledMeetings: [...(n.scheduledMeetings ?? []), newMeeting] } : n
+  )
+  return true
+}
+
+export function getUpcomingMeetings(npcId: string, currentTick: number) {
+  const npc = getNpc(npcId)
+  if (!npc) return []
+  return (npc.scheduledMeetings ?? []).filter(
+    (m) => m.status === 'pending' && m.tick > currentTick && m.tick <= currentTick + 6
+  )
+}
+
+export function completeMeeting(npcId: string, withId: string): void {
+  if (!currentWorld) return
+  currentWorld.npcs = currentWorld.npcs.map((n) => {
+    if (n.id !== npcId) return n
+    return {
+      ...n,
+      scheduledMeetings: (n.scheduledMeetings ?? []).map((m) =>
+        m.withId === withId && m.status === 'pending' ? { ...m, status: 'kept' as const } : m
+      ),
+    }
+  })
+}
+
+export function buyItem(
+  buyerId: string, // 'player' or NPC ID
+  locationId: string,
+  itemName: string
+): { success: boolean; item?: Item; price?: number; error?: string } {
+  if (!currentWorld) return { success: false, error: 'No world' }
+
+  const location = currentWorld.locations.find((l) => l.id === locationId)
+  if (!location) return { success: false, error: 'Location not found' }
+
+  // Find shop container with the item
+  const shop = location.containers.find((c) => c.isShop && c.shopInventory?.some((si) =>
+    si.item.name.toLowerCase().includes(itemName.toLowerCase()) ||
+    itemName.toLowerCase().includes(si.item.name.toLowerCase())
+  ))
+  if (!shop || !shop.shopInventory) return { success: false, error: 'No shop with that item' }
+
+  const shopItem = shop.shopInventory.find((si) =>
+    si.item.name.toLowerCase().includes(itemName.toLowerCase()) ||
+    itemName.toLowerCase().includes(si.item.name.toLowerCase())
+  )
+  if (!shopItem) return { success: false, error: 'Item not available' }
+  if (shopItem.stock === 0) return { success: false, error: 'Out of stock' }
+
+  // Check buyer currency
+  const isPlayer = buyerId === 'player'
+  const buyerCurrency = isPlayer ? (currentPlayer?.currency ?? 0) : (getNpc(buyerId)?.currency ?? 0)
+  if (buyerCurrency < shopItem.price) return { success: false, error: 'Not enough currency' }
+
+  // Deduct currency
+  if (isPlayer && currentPlayer) {
+    currentPlayer.currency -= shopItem.price
+  } else {
+    currentWorld.npcs = currentWorld.npcs.map((n) =>
+      n.id === buyerId ? { ...n, currency: n.currency - shopItem.price } : n
+    )
+  }
+
+  // Give item to buyer
+  const newItem = { ...shopItem.item, id: `item_${Date.now()}`, ownerId: buyerId }
+  if (isPlayer && currentPlayer) {
+    currentPlayer.inventory = [...currentPlayer.inventory, newItem]
+  } else {
+    currentWorld.npcs = currentWorld.npcs.map((n) =>
+      n.id === buyerId ? { ...n, inventory: [...n.inventory, newItem] } : n
+    )
+  }
+
+  // Decrement stock
+  if (shopItem.stock > 0) {
+    const updatedShopInv = shop.shopInventory.map((si) =>
+      si.item.name === shopItem.item.name ? { ...si, stock: si.stock - 1 } : si
+    )
+    const updatedContainers = location.containers.map((c) =>
+      c.id === shop.id ? { ...c, shopInventory: updatedShopInv } : c
+    )
+    currentWorld.locations = currentWorld.locations.map((l) =>
+      l.id === locationId ? { ...l, containers: updatedContainers } : l
+    )
+  }
+
+  return { success: true, item: newItem, price: shopItem.price }
+}
+
 
 export function transferItem(fromId: string, toId: string, itemName: string): boolean {
   if (!currentWorld) return false

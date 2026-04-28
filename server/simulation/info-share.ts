@@ -52,6 +52,16 @@ export function propagateInfo(): InfoShare[] {
         )
         if (alreadyKnows) continue
 
+        // Skip noise: self-referential, first-person, search failures, player actions, private reflections
+        const listenerFirstName = listener.name.split(' ')[0].toLowerCase()
+        const contentLower = toShare.content.toLowerCase()
+        if (contentLower.startsWith(listenerFirstName) || contentLower.startsWith(listener.name.toLowerCase())) continue
+        if (contentLower.startsWith('i ') || contentLower.startsWith('i\'') || contentLower.includes(' is my ')) continue
+        if (contentLower.startsWith('searched ') || contentLower.includes('nothing useful found')) continue
+        if (contentLower.startsWith('the visitor ') || contentLower.includes('visitor investigate')) continue
+        if (contentLower.startsWith('self-reflection:') || toShare.source.startsWith('self —')) continue
+        if (contentLower.startsWith('at ') && contentLower.includes('are here')) continue // location observations
+
         // Share WITHOUT mutation (per user request)
         const newEntry: KnowledgeEntry = {
           id: uuid(),

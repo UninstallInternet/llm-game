@@ -1,5 +1,5 @@
 import type { NPC, WorldState, ConversationTurn, KnowledgeEntry } from '../../shared/types.js'
-import { NPC_DISPOSITION_THRESHOLDS } from '../../shared/constants.js'
+import { NPC_DISPOSITION_THRESHOLDS, TAG_EFFECTS } from '../../shared/constants.js'
 import { getTopMemories } from '../game/state.js'
 
 function dispositionLabel(value: number): string {
@@ -18,6 +18,19 @@ function formatRelationship(npc: NPC, targetName: string, rel: NPC['relationship
     ? ` (${rel.significantMemories.slice(-4).join('; ')})`
     : ''
   return `- ${targetName} (${rel.type}): ${feeling}${trust ? ', ' + trust : ''}${fear}${memories}`
+}
+
+function formatObservableStates(observer: NPC, targets: NPC[]): string {
+  const lines: string[] = []
+  for (const t of targets) {
+    if (t.id === observer.id) continue
+    // ALL tags are visible unless explicitly marked hidden in TAG_EFFECTS
+    const visibleTags = (t.stateFlags ?? []).filter((f) => TAG_EFFECTS[f]?.visible !== false)
+    if (visibleTags.length === 0) continue
+    const effects = visibleTags.map((f) => TAG_EFFECTS[f] ? `${f}: ${TAG_EFFECTS[f].description}` : f).join('; ')
+    lines.push(`${t.name} is ${visibleTags.join(', ')}. (${effects}). React accordingly.`)
+  }
+  return lines.length > 0 ? `\nOBSERVABLE STATES:\n${lines.join('\n')}` : ''
 }
 
 function formatKnowledge(entries: KnowledgeEntry[]): string {
@@ -80,6 +93,12 @@ Time: Day ${world.time.day}, ${String(world.time.hour ?? 8).padStart(2, '0')}:${
 Mood: ${npc.mood.current} | Toward visitor: ${dispositionLabel(npc.mood.toward_player)} (${npc.mood.toward_player}/100)
 ${npc.mood.reasons.length > 0 ? `Why: ${npc.mood.reasons.slice(-5).join('; ')}` : ''}
 ${stateStr}
+${(() => {
+    const ownTags = npc.stateFlags ?? []
+    if (ownTags.length === 0) return ''
+    const descriptions = ownTags.map((f) => TAG_EFFECTS[f] ? `${f}: ${TAG_EFFECTS[f].description}` : f)
+    return `Being ${ownTags.join(', ')} means: ${descriptions.join('; ')}. Reflect this in your speech and actions.`
+  })()}
 ${planStr}
 ${recentEvents ? `Recent events: ${recentEvents}` : ''}
 
@@ -222,15 +241,18 @@ export function buildNpcConversationPrompt(
   const system = `You simulate NPC-to-NPC interactions in a text adventure. Generate a natural exchange. Both act according to personality, goals, and knowledge.
 
 RULES:
-- 3-5 turns total. Mix DIALOGUE and ACTIONS naturally.
+- 8-15 turns total. Let the conversation develop fully — build tension, explore disagreements, reach a turning point. This is NOT a brief exchange.
 - Actions in italics: *slams fist on table* "I told you not to go there."
-- Characters DO things — hand over items, shove, block, repair, search.
+- Characters DO things — hand over items, shove, block, repair, search, arrest, steal, seduce, heal, disguise.
+- Actions have REAL consequences. If someone attacks, someone gets hurt. If someone seduces, clothes may come off. If someone arrests, the target gets restrained.
 - If they have COMMITMENTS, they MUST bring them up and try to fulfill them.
-- If they've talked before about a topic, DON'T repeat it — advance to the next step or make a specific request.
+- If they've talked before about a topic, DON'T repeat it — push toward a resolution, escalation, or new development.
 - Characters never reveal secret goals directly, but those goals color behavior.
 - Secret knowledge stays secret unless trust is very high.
-- The summary should describe what HAPPENED and what CHANGED.
-- Set concluded=false UNLESS both parties have clearly reached an agreement or impasse. Don't rush to conclude — real negotiations take multiple rounds. Default to false.
+- EVERY conversation should END with a concrete outcome: a deal struck, an item exchanged, a threat made, information revealed, a fight started, someone storming off, a betrayal, a confession, an alliance formed. Pure "we should talk more later" is NOT acceptable as an outcome.
+- The summary should describe what HAPPENED and what CHANGED — not just what was discussed.
+- Set the "conflict" field when physical confrontation happens (arrest, fight, restrain, etc.)
+- Set the "agreement_reached" field when characters make ANY kind of deal, promise, or commitment.
 - Respond ONLY with JSON (no markdown, no fences).`
 
   const formatRel = (rel: typeof rel1to2, otherName: string) => {
@@ -269,6 +291,7 @@ ${relevantEvents ? `Current events: ${relevantEvents}` : ''}${planContext}${prio
 
 NPC_1: ${npc1.name}, ${npc1.occupation}, mood: ${npc1.mood.current}, hp: ${npc1.physical.health}/100
 Appearance: ${npc1.appearance}${(npc1.stateFlags?.length ?? 0) > 0 ? ` [Currently: ${npc1.stateFlags.join(', ')}]` : ''}
+${formatObservableStates(npc1, [npc2])}
 Personality: ${npc1.personality.traits.join(', ')}. ${npc1.personality.speechStyle}.
 Goal: ${npc1.goals.public} (secret: ${npc1.goals.secret})
 Inventory: ${npc1.inventory.map((i) => i.name).join(', ') || 'nothing'}
@@ -285,6 +308,7 @@ ${formatRel(rel1to2, npc2.name)}
 
 NPC_2: ${npc2.name}, ${npc2.occupation}, mood: ${npc2.mood.current}, hp: ${npc2.physical.health}/100
 Appearance: ${npc2.appearance}${(npc2.stateFlags?.length ?? 0) > 0 ? ` [Currently: ${npc2.stateFlags.join(', ')}]` : ''}
+${formatObservableStates(npc2, [npc1])}
 Personality: ${npc2.personality.traits.join(', ')}. ${npc2.personality.speechStyle}.
 Goal: ${npc2.goals.public} (secret: ${npc2.goals.secret})
 Inventory: ${npc2.inventory.map((i) => i.name).join(', ') || 'nothing'}
@@ -315,21 +339,23 @@ Generate their ACTUAL conversation — real dialogue with real outcomes. JSON fo
     "conflict": "description of conflict or confrontation" or null
   },
   "npc1_takeaway": {
-    "knowledge": "Detailed: what ${npc1.name} learned, what was discussed, what was decided. 2-3 sentences with specifics.",
+    "knowledge": "What CHANGED for ${npc1.name}: what was decided, agreed, revealed, given, or done. Focus on outcomes, not observations. 2-3 sentences.",
     "mood_shift": "new mood" or null,
     "relationship_delta": -10 to 10,
-    "internal_reaction": "private thought about this encounter (1-2 sentences)"
+    "internal_reaction": "private thought about this encounter (1-2 sentences)",
+    "tag_changes": ["add:scared"] or [] — visible state changes: drunk, scared, angry, excited, aroused, armed, distressed, confident, suspicious
   },
   "npc2_takeaway": {
-    "knowledge": "Detailed: what ${npc2.name} learned, what was discussed, what was decided. 2-3 sentences with specifics.",
+    "knowledge": "What CHANGED for ${npc2.name}: what was decided, agreed, revealed, given, or done. Focus on outcomes, not observations. 2-3 sentences.",
     "mood_shift": "new mood" or null,
     "relationship_delta": -10 to 10,
-    "internal_reaction": "private thought about this encounter (1-2 sentences)"
+    "internal_reaction": "private thought about this encounter (1-2 sentences)",
+    "tag_changes": ["add:angry"] or [] — visible state changes from this conversation
   }
 }
 
 IMPORTANT:
-- Generate 3-5 lines of REAL dialogue per round. Make offers, ask questions, react, agree or disagree.
+- Generate 5-10 lines of REAL dialogue. Let the conversation develop naturally. Make offers, ask questions, react, push back, negotiate, agree or disagree.
 - Set "concluded": true if the conversation has reached a natural end (agreement reached, topic exhausted, someone wants to leave). Set false if more discussion is needed.
 - Conversations can span multiple rounds. Don't rush to a conclusion — persuasion, negotiation, and building trust take time.
 - If this is a continuation (prior dialogue provided), build on what was said — don't repeat or restart.`
@@ -342,7 +368,8 @@ IMPORTANT:
 export function buildGroupConversationPrompt(
   participants: NPC[],
   world: WorldState,
-  playerJoined = false
+  playerJoined = false,
+  conversationReason?: string
 ): { system: string; user: string } {
   const location = world.locations.find((l) => l.id === participants[0]?.currentLocationId)
   const names = participants.map((p) => p.name).join(', ')
@@ -350,12 +377,16 @@ export function buildGroupConversationPrompt(
   const system = `You simulate a group interaction between ${participants.length} characters in a text adventure. Generate natural multi-party dialogue.
 
 RULES:
-- Generate 4-8 lines of dialogue total. Not everyone needs to speak every line.
+- Generate 10-20 lines of dialogue total. Let the conversation develop FULLY — build tension, argue, negotiate, escalate, and reach a CONCLUSION. Not everyone needs to speak every line but the conversation must END with something concrete happening.
 - Mix *actions* with "dialogue". Characters DO things — hand items, gesture, react physically.
 - Characters who are addressed should respond. Characters with strong opinions speak up.
 - If any character has COMMITMENTS, they MUST bring them up.
-- If characters have talked before about a topic, advance it — don't repeat.
-- Set concluded=false unless a clear agreement or impasse is reached. Default to false.
+- If characters have talked before about a topic, advance it — don't repeat. Push toward resolution or escalation.
+- Characters can and SHOULD take physical actions: arrest someone, give items, fight, seduce, heal, disguise, steal, restrain. These have REAL consequences in the game world.
+- EVERY conversation MUST end with a concrete outcome: a deal, an item exchange, a fight, a confession, a betrayal, an alliance, a threat carried out, someone leaving angry. NOT just "we'll talk more later."
+- Set "conflict" when physical confrontation happens. Set "agreement_reached" when ANY deal or commitment is made.
+- Set concluded=true when a clear outcome has been reached. Don't leave conversations hanging.
+- Set tag_changes for each participant to reflect how they changed during the conversation. Use ANY tag that fits — you're not limited to a fixed list. Examples: drunk, scared, armed, aroused, distressed, excited, confident, suspicious, furious, grieving, love_struck, humiliated, triumphant, on_edge, resolute, etc. Format: ["add:tagname"] or ["remove:tagname"]. Every meaningful conversation should change at least one participant's state.
 ${playerJoined ? '- The visitor (player) has joined. NPCs should react naturally — some may welcome them, others may be cautious.' : ''}
 - Respond ONLY with JSON (no markdown).`
 
@@ -382,9 +413,12 @@ ${playerJoined ? '- The visitor (player) has joined. NPCs should react naturally
       return `- With ${other}: ${a.content}`
     }).join('\n')
 
+    const otherParticipants = participants.filter((p) => p.id !== npc.id)
+
     return `PARTICIPANT ${idx + 1}: ${npc.name}, ${npc.occupation}, mood: ${npc.mood.current}
 Personality: ${npc.personality.traits.join(', ')}. ${npc.personality.speechStyle}.
 ${npc.appearance}${(npc.stateFlags?.length ?? 0) > 0 ? ` [Currently: ${npc.stateFlags.join(', ')}]` : ''}
+${formatObservableStates(npc, otherParticipants)}
 Goal: ${npc.goals.public} (secret: ${npc.goals.secret})
 Inventory: ${(npc.inventory ?? []).map((i) => i.name).join(', ') || 'nothing'}
 ${plan}
@@ -411,11 +445,31 @@ ${rels}`
     ? `\nGROUP DYNAMICS:\n${alliances.length > 0 ? `Alliances: ${alliances.join(', ')}` : ''}${tensions.length > 0 ? `\nTensions: ${tensions.join(', ')}` : ''}`
     : ''
 
-  const takeawayKeys = participants.map((p) => `"${p.id}": { "knowledge": "...", "mood_shift": null, "relationship_deltas": {${participants.filter((o) => o.id !== p.id).map((o) => `"${o.id}": 0`).join(', ')}}, "internal_reaction": "..." }`).join(',\n    ')
+  // Prior conversation tracking — prevent repetition
+  const priorTopics: string[] = []
+  for (const npc of participants) {
+    const otherNames = participants.filter((p) => p.id !== npc.id).map((p) => p.name)
+    const priorK = npc.knowledge.filter((k) =>
+      otherNames.some((name) => k.source.includes(name) || k.source.includes(name.split(' ')[0]))
+    ).slice(-3)
+    for (const k of priorK) {
+      priorTopics.push(`${npc.name} already knows: ${k.content}`)
+    }
+  }
+  const priorStr = priorTopics.length > 0
+    ? `\nPRIOR CONVERSATIONS (DO NOT repeat — advance to NEW topics, make CONCRETE requests/offers):\n${priorTopics.join('\n')}`
+    : ''
+
+  // Reason for this conversation
+  const reasonStr = conversationReason
+    ? `\nWHY THIS CONVERSATION IS HAPPENING: ${conversationReason}\nThe conversation MUST address this topic directly. Do not have a generic chat.`
+    : ''
+
+  const takeawayKeys = participants.map((p) => `"${p.id}": { "knowledge": "...", "mood_shift": null, "relationship_deltas": {${participants.filter((o) => o.id !== p.id).map((o) => `"${o.id}": 0`).join(', ')}}, "internal_reaction": "...", "tag_changes": [] }`).join(',\n    ')
 
   const user = `Location: ${location?.name ?? 'unknown'} — ${location?.description?.slice(0, 80) ?? ''}
 Participants: ${names}
-${dynamicsStr}
+${dynamicsStr}${reasonStr}${priorStr}
 
 ${participantBlocks}
 

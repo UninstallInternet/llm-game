@@ -312,6 +312,44 @@ Respond with ONLY JSON:
     }
   }
 
+  // Add shops to market/store type locations
+  for (const loc of locations) {
+    const isShopLocation = loc.type === 'market' || loc.type === 'store' || loc.type === 'shop' ||
+      loc.name.toLowerCase().includes('store') || loc.name.toLowerCase().includes('shop') ||
+      loc.name.toLowerCase().includes('market') || loc.name.toLowerCase().includes('bazaar') ||
+      loc.name.toLowerCase().includes('trading') || loc.name.toLowerCase().includes('goods') ||
+      loc.name.toLowerCase().includes('merchant') || loc.name.toLowerCase().includes('vendor')
+    if (isShopLocation) {
+      // Determine currency name from setting
+      const settingLower = settingDescription.toLowerCase()
+      const currencyName = settingLower.includes('gold') || settingLower.includes('medieval') || settingLower.includes('fantasy') ? 'gold'
+        : settingLower.includes('credit') || settingLower.includes('space') || settingLower.includes('future') ? 'credits'
+        : settingLower.includes('dollar') || settingLower.includes('western') ? 'dollars'
+        : 'coins'
+
+      const shopItems = [
+        { item: { id: `${loc.id}_shop_1`, name: 'Healing Salve', tags: ['medicine', 'consumable'], locationId: null, ownerId: null, description: 'A jar of medicinal paste that helps heal wounds.' }, price: 15, stock: 3 },
+        { item: { id: `${loc.id}_shop_2`, name: 'Sturdy Rope', tags: ['tool', 'general'], locationId: null, ownerId: null, description: 'A length of strong rope, useful for many things.' }, price: 8, stock: 5 },
+        { item: { id: `${loc.id}_shop_3`, name: 'Lantern', tags: ['tool', 'light'], locationId: null, ownerId: null, description: 'A reliable oil lantern for dark places.' }, price: 12, stock: 3 },
+        { item: { id: `${loc.id}_shop_4`, name: 'Lockpick Set', tags: ['tool', 'stealth'], locationId: null, ownerId: null, description: 'A set of fine metal picks for opening locks.' }, price: 25, stock: 2 },
+        { item: { id: `${loc.id}_shop_5`, name: 'Flask of Spirits', tags: ['drink', 'consumable'], locationId: null, ownerId: null, description: 'Strong drink. Might loosen tongues or steady nerves.' }, price: 5, stock: 10 },
+      ]
+
+      loc.containers.push({
+        id: `${loc.id}_shop`,
+        name: `${loc.name} counter`,
+        tags: ['shop'],
+        searchDifficulty: 0,
+        searchCount: 0,
+        lastSearchTick: 0,
+        expectedItemTypes: ['general'],
+        isShop: true,
+        shopInventory: shopItems,
+        currencyName,
+      })
+    }
+  }
+
   onProgress('building', 'Building factions...')
   const factions: Faction[] = raw.factions.map((f) => ({
     id: f.id,
@@ -386,6 +424,9 @@ Respond with ONLY JSON:
       physical: { health: 100, energy: 100, injuries: [], status: 'alive' as const },
       stateFlags: [],
       agreements: [],
+      scheduledMeetings: [],
+      currency: Math.floor(20 + Math.random() * 80),
+      portraitUrl: null,
     }
   })
 
@@ -481,6 +522,22 @@ Respond with ONLY JSON:
     factions,
     events,
     mysteries,
+  }
+
+  // Generate portraits in parallel (non-blocking, opt-in via ENABLE_PORTRAITS env)
+  if (process.env.ENABLE_PORTRAITS === 'true') {
+    onProgress('generating', 'Creating character portraits...')
+    try {
+      const { generatePortraitBatch } = await import('./portrait-generator.js')
+      const portraits = await generatePortraitBatch(npcs, settingDescription)
+      for (const [npcId, url] of portraits) {
+        const npc = npcs.find((n) => n.id === npcId)
+        if (npc) npc.portraitUrl = url
+      }
+      onProgress('generating', `Generated ${portraits.size} portraits.`)
+    } catch (err) {
+      console.error('[Portraits] Batch generation failed:', err)
+    }
   }
 
   onProgress('complete', `${worldState.name} is ready! ${npcs.length} characters, ${locations.length} locations.`)

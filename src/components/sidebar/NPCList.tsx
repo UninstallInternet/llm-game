@@ -43,10 +43,19 @@ export function NPCList() {
                       : 'hover:bg-gray-800 border border-transparent'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className={`text-sm ${isSelected ? 'text-amber-400' : 'text-gray-200'}`}>
-                      {isKnown ? npc.name : 'Unknown Person'}
-                    </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {(npc as { portraitUrl?: string | null }).portraitUrl && (
+                        <img
+                          src={(npc as { portraitUrl?: string | null }).portraitUrl!}
+                          alt={npc.name}
+                          className="w-8 h-8 rounded object-cover flex-shrink-0"
+                        />
+                      )}
+                      <span className={`text-sm ${isSelected ? 'text-amber-400' : 'text-gray-200'}`}>
+                        {isKnown ? npc.name : 'Unknown Person'}
+                      </span>
+                    </div>
                     <span className="text-xs">{dispositionIndicator(disposition)}</span>
                   </div>
                   <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
@@ -108,8 +117,19 @@ export function NPCList() {
 }
 
 function NpcDetailPanel({ npc, world }: { npc: NPC; world: { npcs: NPC[] } }) {
+  const portraitUrl = (npc as { portraitUrl?: string | null }).portraitUrl
   return (
-    <div className="mx-1 mb-2 p-2 bg-gray-900 border border-gray-700 rounded text-[11px] space-y-2 max-h-64 overflow-y-auto">
+    <div className="mx-1 mb-2 p-2 bg-gray-900 border border-gray-700 rounded text-[11px] space-y-2 max-h-[500px] overflow-y-auto">
+      {/* Full-body portrait */}
+      {portraitUrl && (
+        <div className="flex justify-center">
+          <img
+            src={portraitUrl}
+            alt={npc.name}
+            className="w-40 h-40 object-contain rounded border border-gray-700 bg-gray-950"
+          />
+        </div>
+      )}
       {/* Physical */}
       <Section title="Physical">
         <div className="flex gap-3">
