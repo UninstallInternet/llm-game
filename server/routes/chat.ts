@@ -63,7 +63,7 @@ chatRoutes.post('/', async (req, res) => {
     markNpcBusy(npcId)
 
     // Save player turn
-    addConversationTurn(npcId, {
+    await addConversationTurn(npcId, {
       role: 'player',
       content: message,
       tick: world.currentTick,
@@ -75,7 +75,7 @@ chatRoutes.post('/', async (req, res) => {
     const npcResponse = await conversate(freshNpc, world, history, message)
 
     // Save NPC turn
-    addConversationTurn(npcId, {
+    await addConversationTurn(npcId, {
       role: 'npc',
       content: npcResponse.dialogue,
       tick: world.currentTick,
@@ -158,7 +158,7 @@ chatRoutes.post('/', async (req, res) => {
     }
 
     // Persist FIRST, then respond, then trigger tick (avoids race condition)
-    persistGame()
+    await persistGame()
 
     const response: ApiResponse<ChatResponse> = {
       success: true,

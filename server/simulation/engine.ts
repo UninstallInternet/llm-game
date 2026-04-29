@@ -90,7 +90,7 @@ async function runTick(): Promise<void> {
     })
 
     if (updatedWorld.currentTick % 4 === 0) {
-      persistGame()
+      await persistGame()
     }
   } catch (error) {
     console.error('Simulation tick error:', error)

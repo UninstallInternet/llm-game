@@ -155,7 +155,7 @@ export function movePlayer(locationId: string): Location | null {
   return location
 }
 
-export function addConversationTurn(npcId: string, turn: ConversationTurn): void {
+export async function addConversationTurn(npcId: string, turn: ConversationTurn): Promise<void> {
   if (!currentPlayer) return
 
   if (!currentPlayer.conversationHistory[npcId]) {
@@ -171,7 +171,7 @@ export function addConversationTurn(npcId: string, turn: ConversationTurn): void
     )
   }
 
-  saveConversationTurn(saveId, npcId, turn)
+  await saveConversationTurn(saveId, npcId, turn)
 }
 
 export function updateNpcMood(npcId: string, mood: string, playerDelta: number, reason: string): void {
@@ -298,13 +298,13 @@ export function advanceTime(): GameTime {
   return currentWorld.time
 }
 
-export function persistGame(): void {
+export async function persistGame(): Promise<void> {
   if (!currentWorld || !currentPlayer) return
-  saveGame(saveId, currentWorld.name, currentWorld, currentPlayer)
+  await saveGame(saveId, currentWorld.name, currentWorld, currentPlayer)
 }
 
-export function loadSavedGame(id: string): boolean {
-  const saved = loadGame(id)
+export async function loadSavedGame(id: string): Promise<boolean> {
+  const saved = await loadGame(id)
   if (!saved) return false
   currentWorld = migrateWorld(saved.world)
   currentPlayer = migratePlayer(saved.player)

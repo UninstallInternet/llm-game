@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./server/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - dev_network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  server:
+    image: node:20-alpine
+    working_dir: /app
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "npm ci && npm run dev:server"
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - dev_network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+
+  client:
+    image: node:20-alpine
+    working_dir: /app
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "npm ci && node_modules/.bin/vite --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_PROXY_TARGET=http://server:3001
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - dev_network
+
+volumes:
+  postgres_data_dev:
+
+networks:
+  dev_network:
+    driver: bridge
