@@ -1,0 +1,53 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting a bug! Please fill out the details below.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly
+      placeholder: "NPCs keep having the same conversation..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: "NPCs should advance the conversation topic..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Generate a world with 4 NPCs
+        2. Chat with NPC and make agreement
+        3. Wait 10 ticks
+        4. Check NPC plan - agreement not reflected
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - NPC Conversations
+        - NPC Planning
+        - Action Resolution
+        - World Generation
+        - Frontend / UI
+        - Economy / Shops
+        - Tags / State
+        - Save / Load
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: tick
+    attributes:
+      label: Tick number (if applicable)
+      placeholder: "42"

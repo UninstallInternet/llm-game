@@ -1,6 +1,28 @@
 # The Unnamed Town — LLM-Powered Text Adventure
 
-An emergent text adventure where NPCs are fully autonomous agents powered by LLM. They form plans, have real conversations, make agreements, search for items, confront each other, and remember everything. The player can talk freely, take any action, and participate in group activities with multiple NPCs.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933.svg)](https://nodejs.org/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4.1-412991.svg)](https://openai.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
+[![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-blueviolet)](https://claude.ai/code)
+
+**An emergent text adventure where NPCs are fully autonomous agents powered by LLM.** They form plans, have real conversations, make agreements, fight, seduce, scheme, and remember everything. The player can talk freely, take any action, and shape the world.
+
+### Highlights
+
+- **Autonomous NPCs** with memory, planning, goals, and physical state
+- **Real NPC-to-NPC conversations** that produce agreements, conflicts, and alliances
+- **Physical consequences** — combat deals HP damage, restraint immobilizes, tags track state
+- **Idea propagation** — convince one NPC, watch the belief spread to others
+- **Open-ended tags** — NPCs gain and display any state: `injured`, `drunk`, `love_struck`, `on_fire`
+- **Economy & shops** — currency, item trading, setting-appropriate inventories
+- **Pixel art portraits** — DALL-E 3 generated character sprites (opt-in)
+- **Docker-ready** — one command to run with PostgreSQL
+
+> **90+ commits** | **9,000+ lines** | **Playtested through 100-tick autonomous simulations** with emergent warfare, social manipulation, and NPC-driven narrative arcs
 
 ## Quick Start
 
