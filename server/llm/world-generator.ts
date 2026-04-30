@@ -471,6 +471,7 @@ Respond with ONLY JSON:
       stateFlags: [],
       agreements: [],
       scheduledMeetings: [],
+      npcDialogueHistory: {},
       currency: Math.floor(20 + Math.random() * 80),
       portraitUrl: null,
     }

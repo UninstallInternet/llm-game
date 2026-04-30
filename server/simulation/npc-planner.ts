@@ -889,7 +889,21 @@ export async function processNpcTurn(
     updateNpcPlan(npc.id, null)
   }
 
-  // ALWAYS execute active plans — regardless of activation level
+  // Check for significant events that should interrupt the current plan
+  if (npc.activePlan?.status === 'active') {
+    const criticalEvents = npc.knowledge.filter((k) =>
+      k.turnLearned === world.currentTick &&
+      k.importance >= 0.8 &&
+      (k.source === 'experienced' || k.source === 'witnessed')
+    )
+    if (criticalEvents.length > 0) {
+      console.log(`[Interrupt] ${npc.name} interrupted by: ${criticalEvents[0].content.slice(0, 50)}`)
+      updateNpcPlan(npc.id, null)
+      // Fall through to activation system to form new plan this tick
+    }
+  }
+
+  // Execute active plans
   if (npc.activePlan?.status === 'active') {
     const result = await executeCurrentStep(npc, world)
     if (result.executed) {

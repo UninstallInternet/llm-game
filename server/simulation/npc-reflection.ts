@@ -3,21 +3,59 @@ import {
   getWorld,
   getPlayer,
   addNpcKnowledge,
+  removeOldKnowledge,
   updateNpcPlan,
   isNpcBusy,
+  getNpc,
 } from '../game/state.js'
 import { llmFunctionCall } from '../llm/client.js'
-import { REFLECTION_SCHEMA } from '../llm/schemas.js'
+import { REFLECTION_SCHEMA, MEMORY_CONSOLIDATION_SCHEMA } from '../llm/schemas.js'
 import { getTopMemories } from '../game/state.js'
 import { broadcastEvent } from '../routes/events.js'
 import type { NPC, WorldState } from '../../shared/types.js'
 
-const REFLECTION_INTERVAL = 8 // ticks between reflections
+const REFLECTION_INTERVAL = 8 // ticks between periodic reflections
+
+// Check if an NPC should reflect immediately due to significant events
+export function shouldReflectImmediately(npc: NPC, world: WorldState): boolean {
+  const recentCritical = npc.knowledge.filter((k) =>
+    k.turnLearned >= world.currentTick - 1 &&
+    k.importance >= 0.7 &&
+    (k.source.includes('experienced') || k.source.includes('agreement'))
+  )
+  // Already reflected very recently? Skip
+  const recentlyReflected = npc.knowledge.some((k) =>
+    k.source === 'self — reflection' && k.turnLearned >= world.currentTick - 2
+  )
+  if (recentlyReflected) return false
+
+  return (
+    recentCritical.length >= 2 ||
+    npc.activePlan?.status === 'completed' ||
+    (npc.physical.health < 40 && npc.knowledge.some((k) => k.source === 'experienced' && k.turnLearned >= world.currentTick - 1))
+  )
+}
 
 export async function runReflections(world: WorldState): Promise<void> {
+  // Event-driven reflections — NPCs who just experienced something significant
+  let eventReflections = 0
+  for (const npc of world.npcs) {
+    if (eventReflections >= 2) break // budget cap
+    if (isNpcBusy(npc.id) || npc.physical.status !== 'alive') continue
+    if (shouldReflectImmediately(npc, world)) {
+      try {
+        await reflectNpc(npc, world)
+        eventReflections++
+        console.log(`[Reflect-Event] ${npc.name} reflected due to significant event`)
+      } catch (err) {
+        console.error(`Event reflection failed for ${npc.name}:`, err)
+      }
+    }
+  }
+
+  // Periodic reflections — every N ticks for background NPCs
   if (world.currentTick % REFLECTION_INTERVAL !== 0 || world.currentTick === 0) return
 
-  // Pick 2-3 NPCs to reflect (budget control)
   const candidates = world.npcs
     .filter((n) => !isNpcBusy(n.id) && n.physical.status === 'alive')
     .sort(() => Math.random() - 0.5)
@@ -147,5 +185,63 @@ Respond with ONLY JSON:
         description: result.approach_reason ?? `${npc.name} wants to talk to you.`,
       },
     })
+  }
+}
+
+// ─── Memory Consolidation ───
+// Compresses oldest memories into summaries when knowledge is getting full
+
+export async function consolidateMemories(world: WorldState): Promise<void> {
+  if (world.currentTick % 20 !== 0 || world.currentTick === 0) return
+
+  for (const npc of world.npcs) {
+    if (npc.knowledge.length < 100) continue // only when getting full
+    if (npc.physical.status === 'dead') continue
+
+    try {
+      // Take the 30 oldest entries
+      const sorted = [...npc.knowledge].sort((a, b) => a.turnLearned - b.turnLearned)
+      const oldest = sorted.slice(0, 30)
+      const oldestContent = oldest.map((k) => `- ${k.content} (source: ${k.source}, importance: ${k.importance})`).join('\n')
+
+      const prompt = `You are consolidating an NPC's oldest memories into key summary facts. The NPC is ${npc.name} (${npc.occupation}).
+
+These are their 30 oldest memories (from earliest experiences):
+${oldestContent}
+
+Summarize these into 5-8 KEY FACTS that preserve:
+- The most important events and discoveries
+- Key relationships formed or changed
+- Critical information learned
+- Any agreements or commitments made
+
+Each fact should be 1-2 sentences. Discard trivial observations like "searched X but found nothing" or "the visitor waited."`
+
+      const result = await llmFunctionCall<{ summaries: string[] }>(
+        'simulation',
+        [{ role: 'system', content: prompt }, { role: 'user', content: 'Consolidate these memories.' }],
+        MEMORY_CONSOLIDATION_SCHEMA
+      )
+
+      if (result.summaries && result.summaries.length > 0) {
+        // Remove the 30 old entries
+        removeOldKnowledge(npc.id, oldest.map((k) => k.id))
+
+        // Add consolidated summaries with high importance
+        addNpcKnowledge(npc.id, result.summaries.map((s) => ({
+          id: uuid(),
+          content: s,
+          source: 'consolidated memory',
+          confidence: 1.0,
+          importance: 0.8,
+          turnLearned: world.currentTick,
+          isSecret: false,
+        })))
+
+        console.log(`[Consolidate] ${npc.name}: 30 memories → ${result.summaries.length} summaries`)
+      }
+    } catch (err) {
+      console.error(`Memory consolidation failed for ${npc.name}:`, err)
+    }
   }
 }

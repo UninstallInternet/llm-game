@@ -146,6 +146,24 @@ export const REFLECTION_SCHEMA: FunctionSchema = {
   },
 }
 
+export const MEMORY_CONSOLIDATION_SCHEMA: FunctionSchema = {
+  name: 'consolidate_memories',
+  description: 'Consolidate a list of memories into key summary facts',
+  parameters: {
+    type: 'object',
+    required: ['summaries'],
+    properties: {
+      summaries: {
+        type: 'array',
+        items: { type: 'string' },
+        minItems: 3,
+        maxItems: 8,
+        description: 'Key facts preserving the most important events, relationships, and discoveries',
+      },
+    },
+  },
+}
+
 export const GROUP_CONVERSATION_SCHEMA: FunctionSchema = {
   name: 'group_conversation',
   description: 'Generate multi-party NPC conversation with dialogue and per-participant takeaways',

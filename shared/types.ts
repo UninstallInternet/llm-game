@@ -85,6 +85,7 @@ export interface NPC {
   stateFlags: string[]        // open-ended: ["handstanding", "drunk", "hiding", "bleeding"]
   agreements: Agreement[]
   scheduledMeetings: ScheduledMeeting[]
+  npcDialogueHistory: Record<string, Array<{ speaker: string; says: string; tick: number }>>
   currency: number
   portraitUrl: string | null
 }

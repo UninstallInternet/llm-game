@@ -445,18 +445,34 @@ ${rels}`
     : ''
 
   // Prior conversation tracking — prevent repetition
-  const priorTopics: string[] = []
+  // Prior dialogue history between participants — actual words exchanged
+  const priorLines: string[] = []
   for (const npc of participants) {
-    const otherNames = participants.filter((p) => p.id !== npc.id).map((p) => p.name)
-    const priorK = npc.knowledge.filter((k) =>
-      otherNames.some((name) => k.source.includes(name) || k.source.includes(name.split(' ')[0]))
-    ).slice(-3)
-    for (const k of priorK) {
-      priorTopics.push(`${npc.name} already knows: ${k.content}`)
+    for (const other of participants.filter((p) => p.id !== npc.id)) {
+      const history = (npc as { npcDialogueHistory?: Record<string, Array<{ speaker: string; says: string; tick: number }>> }).npcDialogueHistory?.[other.id]
+      if (history && history.length > 0) {
+        priorLines.push(`LAST EXCHANGE between ${npc.name} and ${other.name}:`)
+        for (const h of history.slice(-4)) {
+          priorLines.push(`  ${h.speaker}: "${h.says.slice(0, 60)}"`)
+        }
+        break // only show one pair's history to avoid prompt bloat
+      }
     }
   }
-  const priorStr = priorTopics.length > 0
-    ? `\nPRIOR CONVERSATIONS (DO NOT repeat — advance to NEW topics, make CONCRETE requests/offers):\n${priorTopics.join('\n')}`
+  // Fallback to knowledge-based prior topics if no dialogue history
+  if (priorLines.length === 0) {
+    for (const npc of participants) {
+      const otherNames = participants.filter((p) => p.id !== npc.id).map((p) => p.name)
+      const priorK = npc.knowledge.filter((k) =>
+        otherNames.some((name) => k.source.includes(name) || k.source.includes(name.split(' ')[0]))
+      ).slice(-3)
+      for (const k of priorK) {
+        priorLines.push(`${npc.name} already knows: ${k.content}`)
+      }
+    }
+  }
+  const priorStr = priorLines.length > 0
+    ? `\nPRIOR CONVERSATIONS (DO NOT repeat these — continue from where you left off, advance the story):\n${priorLines.join('\n')}`
     : ''
 
   // Reason for this conversation

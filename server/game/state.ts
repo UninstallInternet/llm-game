@@ -84,6 +84,7 @@ function migrateNpc(npc: Partial<NPC>): NPC {
     stateFlags: npc.stateFlags ?? [],
     agreements: npc.agreements ?? [],
     scheduledMeetings: npc.scheduledMeetings ?? [],
+    npcDialogueHistory: npc.npcDialogueHistory ?? {},
     currency: npc.currency ?? 0,
     portraitUrl: npc.portraitUrl ?? null,
     knowledge: (npc.knowledge ?? []).map((k) => ({
@@ -524,6 +525,39 @@ export function updateNpcPlan(npcId: string, plan: NPC['activePlan']): void {
   if (!currentWorld) return
   currentWorld.npcs = currentWorld.npcs.map((n) =>
     n.id === npcId ? { ...n, activePlan: plan ? { ...plan } : null } : n
+  )
+}
+
+export function removeOldKnowledge(npcId: string, ids: string[]): void {
+  if (!currentWorld) return
+  const npc = getNpc(npcId)
+  if (!npc) return
+  const idSet = new Set(ids)
+  const filtered = npc.knowledge.filter((k) => !idSet.has(k.id))
+  currentWorld.npcs = currentWorld.npcs.map((n) =>
+    n.id === npcId ? { ...n, knowledge: filtered } : n
+  )
+}
+
+export function addNpcDialogueHistory(
+  npcId: string,
+  otherNpcId: string,
+  dialogue: Array<{ speaker: string; says: string }>,
+  tick: number
+): void {
+  if (!currentWorld) return
+  const npc = getNpc(npcId)
+  if (!npc) return
+
+  const history = { ...(npc.npcDialogueHistory ?? {}) }
+  const existing = history[otherNpcId] ?? []
+  const newEntries = dialogue.map((d) => ({ ...d, tick }))
+  // Keep last 6 lines per pair (3 exchanges worth)
+  const combined = [...existing, ...newEntries].slice(-6)
+  history[otherNpcId] = combined
+
+  currentWorld.npcs = currentWorld.npcs.map((n) =>
+    n.id === npcId ? { ...n, npcDialogueHistory: history } : n
   )
 }
 

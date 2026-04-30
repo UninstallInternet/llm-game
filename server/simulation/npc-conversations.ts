@@ -14,6 +14,7 @@ import {
   addScheduledMeeting,
   applyPhysicalEffects,
   updateNpcStateFlags,
+  addNpcDialogueHistory,
 } from '../game/state.js'
 import { llmFunctionCall } from '../llm/client.js'
 import { GROUP_CONVERSATION_SCHEMA } from '../llm/schemas.js'
@@ -630,6 +631,16 @@ export async function runNpcConversations(): Promise<NpcConversationResult[]> {
       outcome: parsed.outcome ?? null,
     }
     applyGroupResult(result, world)
+
+    // Store dialogue history between each NPC pair
+    if (result.dialogue.length > 0) {
+      for (const npc of group) {
+        for (const other of group.filter((p) => p.id !== npc.id)) {
+          addNpcDialogueHistory(npc.id, other.id, result.dialogue, world.currentTick)
+        }
+      }
+    }
+
     results.push(result)
     console.log(`[Convo] ${names}: ${result.summary.slice(0, 80)}`)
   }
