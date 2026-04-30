@@ -224,7 +224,7 @@ Mostly deterministic (zero LLM cost):
 
 ### 7. Dynamic NPC State
 
-- **State flags**: open-ended tags (nude, drunk, hiding, bleeding — any string)
+- **State flags**: open-ended tags (optimistic, confident, drunk, hiding, bleeding — any string)
 - **Agreements**: tracked commitments with keyword-based deduplication
 - **Physical state**: health (0-100), energy, injuries, status (alive/unconscious/dead/restrained)
 - **Relationships**: trust, affection, respect, fear (each -100 to +100, independent)
