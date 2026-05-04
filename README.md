@@ -11,15 +11,30 @@
 
 **An emergent text adventure where NPCs are fully autonomous agents powered by LLM.** They form plans, have real conversations, make agreements, fight, seduce, scheme, and remember everything. The player can talk freely, take any action, and shape the world.
 
-### Highlights
+---
 
-- **Autonomous NPCs** with memory, planning, goals, and physical state
-- **Real NPC-to-NPC conversations** that produce agreements, conflicts, and alliances
-- **Physical consequences** — combat deals HP damage, restraint immobilizes, tags track state
-- **Idea propagation** — convince one NPC, watch the belief spread to others
-- **Open-ended tags** — NPCs gain and display any state: `injured`, `drunk`, `love_struck`, `on_fire`
-- **Economy & shops** — currency, item trading, setting-appropriate inventories
-- **Pixel art portraits** — DALL-E 3 generated character sprites (opt-in)
+## Screenshots
+
+![Gameplay](docs/screenshots/gameplay.png)
+*The full game interface: a conversation with Ryn Blackthorn (barkeep and informant) in the Tavern Cellar, while the debug panel shows live NPC reasoning — Garrick Stonebrew negotiating with Ryn, Sera Dunwell agreeing to cover for the smuggling operation. The event log on the right tracks NPC actions happening autonomously in the background.*
+
+<p float="left">
+  <img src="docs/screenshots/npc-attributes.png" width="48%" alt="NPC attributes" />
+  <img src="docs/screenshots/npc-plan.png" width="48%" alt="NPC active plan" />
+</p>
+
+*Inspecting Ryn Blackthorn's character sheet. Left: physical state (HP/energy), inventory (Aged Red Wine, Ancient Gold Coin), state tags, and a live agreement with Garrick — "Sera commits to alert Garrick if the Merchants' Guild detects threats." Right: Ryn's active multi-step plan — "Smuggle stolen cargo for the Silver Daggers through the tavern cellar" — with completed steps (✓), the current step (▶), and upcoming steps. Every NPC in the world is running a plan like this simultaneously, without any player input.*
+
+---
+
+## What it does
+
+- **Fully autonomous NPCs** — each NPC has a secret goal, forms multi-step plans, executes them step by step, and replans when things go wrong. All without the player doing anything.
+- **Real NPC-to-NPC conversations** — NPCs seek each other out based on overlapping plans and relationships, negotiate, form agreements, and transfer items. Agreements trigger replanning for all parties.
+- **Living memory** — NPCs remember everything with importance/recency/relevance scoring (Stanford Generative Agents-inspired). Convince one NPC of something and watch the belief propagate across the town.
+- **Physical world** — combat produces HP damage, injuries, and state tags. Tags (`injured`, `drunk`, `armed`, `confident`) are visible to other NPCs, affect action probability, and change how NPCs treat each other.
+- **Game Master** — every player action and NPC plan step is adjudicated by an LLM referee with probability bands (5–90%), producing narrative outcomes with real consequences.
+- **Full debug visibility** — toggle the debug panel to watch NPC reasoning chains, live conversations, and plan execution in real time.
 - **Docker-ready** — one command to run with PostgreSQL
 
 ---
@@ -137,8 +152,9 @@ Key settings in `shared/constants.ts`:
 ## Testing
 
 ```bash
-npm run dev:server           # start server
-npm run test                 # integration tests (~$0.05 per run)
+npm run test:smoke           # 60 unit tests, free, no API key required
+npm run typecheck            # TypeScript type check
+npm run test                 # integration tests — requires API key (~$0.05 per run)
 ```
 
 ---
