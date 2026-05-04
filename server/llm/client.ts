@@ -6,6 +6,9 @@ const apiKey = process.env.OPENAI_API_KEY
 if (!apiKey) {
   throw new Error('OPENAI_API_KEY not configured. Set it in .env')
 }
+if (apiKey === 'your-openai-api-key-here') {
+  throw new Error('OPENAI_API_KEY is still the placeholder value. Set a real key in .env')
+}
 
 const openai = new OpenAI({ apiKey, timeout: 120000 })
 

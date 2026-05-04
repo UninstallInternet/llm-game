@@ -22,7 +22,7 @@ export function propagateInfo(): InfoShare[] {
   }
 
   // For each location with 2+ NPCs, maybe share info
-  for (const [_locationId, npcIds] of byLocation) {
+  for (const [, npcIds] of byLocation) {
     if (npcIds.length < 2) continue
 
     for (const speakerId of npcIds) {

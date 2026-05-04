@@ -11,7 +11,6 @@ import type {
   TimeOfDay,
 } from '../../shared/types.js'
 import {
-  TIME_ORDER,
   MAX_CONVERSATION_HISTORY,
   MAX_KNOWLEDGE_PER_NPC,
   MEMORY_DECAY_RATE,
@@ -824,4 +823,67 @@ export function applyPhysicalEffects(
     physical: { health, energy, injuries, status },
   }
   currentWorld.npcs = currentWorld.npcs.map((n) => (n.id === npcId ? updated : n))
+}
+
+export function addNpcInventoryItem(npcId: string, item: Item): void {
+  if (!currentWorld) return
+  currentWorld.npcs = currentWorld.npcs.map((n) =>
+    n.id === npcId ? { ...n, inventory: [...n.inventory, item] } : n
+  )
+}
+
+export function addLocationItem(locationId: string, item: Item): void {
+  if (!currentWorld) return
+  currentWorld.locations = currentWorld.locations.map((l) =>
+    l.id === locationId ? { ...l, items: [...l.items, item] } : l
+  )
+}
+
+export function markEventResolved(eventIndex: number): void {
+  if (!currentWorld) return
+  currentWorld = {
+    ...currentWorld,
+    events: currentWorld.events.map((e, i) =>
+      i === eventIndex ? { ...e, resolved: true } : e
+    ),
+  }
+}
+
+export function updateContainerSearchTracking(
+  locationId: string,
+  containerId: string,
+  searchCount: number,
+  tick: number
+): void {
+  if (!currentWorld) return
+  currentWorld.locations = currentWorld.locations.map((l) =>
+    l.id !== locationId ? l : {
+      ...l,
+      containers: l.containers.map((c) =>
+        c.id !== containerId ? c : { ...c, searchCount, lastSearchTick: tick }
+      ),
+    }
+  )
+}
+
+export function markMysteryClueFound(mysteryIdx: number, clueIdx: number): void {
+  if (!currentWorld) return
+  currentWorld = {
+    ...currentWorld,
+    mysteries: currentWorld.mysteries.map((m, mi) =>
+      mi !== mysteryIdx ? m : {
+        ...m,
+        clues: m.clues.map((c, ci) =>
+          ci !== clueIdx ? c : { ...c, foundByPlayer: true }
+        ),
+      }
+    ),
+  }
+}
+
+export function updateNpcBeliefs(npcId: string, beliefs: NPC['beliefs']): void {
+  if (!currentWorld) return
+  currentWorld.npcs = currentWorld.npcs.map((n) =>
+    n.id === npcId ? { ...n, beliefs } : n
+  )
 }

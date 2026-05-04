@@ -1,7 +1,6 @@
 import { v4 as uuid } from 'uuid'
 import {
   getWorld,
-  getPlayer,
   addNpcKnowledge,
   updateNpcRelationship,
   updateNpcMoodGeneral,
@@ -22,7 +21,6 @@ import { buildGroupConversationPrompt } from '../llm/prompts.js'
 import { broadcastEvent } from '../routes/events.js'
 import {
   MAX_NPC_CONVERSATIONS_PER_TICK,
-  MIN_CONVERSATION_SCORE,
   MAX_GROUP_SIZE,
   TAG_EFFECTS,
 } from '../../shared/constants.js'
@@ -41,8 +39,6 @@ interface OngoingConversation {
 }
 
 const activeConversations: OngoingConversation[] = []
-
-const MAX_CONVERSATION_ROUNDS = 4
 
 export function getActiveConversationAtLocation(locationId: string): OngoingConversation | undefined {
   return activeConversations.find((c) => c.locationId === locationId)

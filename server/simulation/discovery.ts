@@ -1,15 +1,23 @@
 import { v4 as uuid } from 'uuid'
-import { getWorld, addNpcKnowledge } from '../game/state.js'
+import { z } from 'zod'
+import { addNpcKnowledge, addLocationItem, markMysteryClueFound } from '../game/state.js'
 import { llmCall } from '../llm/client.js'
 import { broadcastEvent } from '../routes/events.js'
 import type { NPC, WorldState, Item, Location } from '../../shared/types.js'
 
-interface DiscoveryResult {
-  items: Array<{ name: string; tags: string[]; description: string; significance: 'mundane' | 'useful' | 'quest' }>
-  observations: string[]
-  newConnections: string[]
-  cluesFound: string[]
-}
+const discoverySchema = z.object({
+  items: z.array(z.object({
+    name: z.string().min(1),
+    tags: z.array(z.string()).default([]),
+    description: z.string().default(''),
+    significance: z.enum(['mundane', 'useful', 'quest']).default('mundane'),
+  })).default([]),
+  observations: z.array(z.string()).default([]),
+  newConnections: z.array(z.string()).default([]),
+  cluesFound: z.array(z.string()).default([]),
+})
+
+type DiscoveryResult = z.infer<typeof discoverySchema>
 
 export async function generateDiscovery(
   npc: NPC,
@@ -51,10 +59,10 @@ Respond with ONLY JSON:
       cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
     }
 
-    const parsed = JSON.parse(cleaned) as DiscoveryResult
+    const parsed = discoverySchema.parse(JSON.parse(cleaned))
 
     // Apply discoveries
-    // Add items to location
+    // Add items to location via state layer
     for (const item of parsed.items ?? []) {
       const newItem: Item = {
         id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -64,7 +72,7 @@ Respond with ONLY JSON:
         ownerId: null,
         description: item.description,
       }
-      location.items.push(newItem)
+      addLocationItem(location.id, newItem)
     }
 
     // Add observations as NPC knowledge
@@ -92,11 +100,13 @@ Respond with ONLY JSON:
         isSecret: false,
       }])
 
-      // Mark matching mystery clues as found
-      for (const mystery of world.mysteries) {
-        for (const mc of mystery.clues) {
+      // Mark matching mystery clues as found via state layer
+      for (let mi = 0; mi < world.mysteries.length; mi++) {
+        const mystery = world.mysteries[mi]
+        for (let ci = 0; ci < mystery.clues.length; ci++) {
+          const mc = mystery.clues[ci]
           if (!mc.foundByPlayer && mc.npcId === npc.id) {
-            mc.foundByPlayer = true
+            markMysteryClueFound(mi, ci)
           }
         }
       }

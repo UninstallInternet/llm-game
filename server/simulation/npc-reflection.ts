@@ -1,12 +1,10 @@
 import { v4 as uuid } from 'uuid'
 import {
-  getWorld,
   getPlayer,
   addNpcKnowledge,
   removeOldKnowledge,
   updateNpcPlan,
   isNpcBusy,
-  getNpc,
 } from '../game/state.js'
 import { llmFunctionCall } from '../llm/client.js'
 import { REFLECTION_SCHEMA, MEMORY_CONSOLIDATION_SCHEMA } from '../llm/schemas.js'

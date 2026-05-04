@@ -12,6 +12,7 @@ import {
 import { listSaves } from '../db/database.js'
 import { startSimulation, stopSimulation } from '../simulation/engine.js'
 import { broadcastEvent } from './events.js'
+import { validate, generateWorldSchema, loadGameSchema } from '../middleware/validate.js'
 
 export const gameRoutes = Router()
 
@@ -30,21 +31,16 @@ async function autoLoadLastSave(): Promise<void> {
   }
 }
 
-gameRoutes.post('/new', async (req, res) => {
+gameRoutes.post('/new', validate(generateWorldSchema), async (req, res) => {
   try {
     const { settingDescription, npcCount, locationCount } = req.body as GenerateWorldRequest
-
-    if (!settingDescription) {
-      res.json({ success: false, error: 'settingDescription is required' } satisfies ApiResponse<never>)
-      return
-    }
 
     stopSimulation()
 
     const world = await generateWorld(
       settingDescription,
-      npcCount || 10,
-      locationCount || 6,
+      npcCount,
+      locationCount,
       (phase, message) => {
         broadcastEvent({ type: 'world_generated', data: { phase, message } })
       }
@@ -104,12 +100,8 @@ gameRoutes.post('/save', async (_req, res) => {
   res.json({ success: true, data: { message: 'Game saved' } })
 })
 
-gameRoutes.post('/load', async (req, res) => {
+gameRoutes.post('/load', validate(loadGameSchema), async (req, res) => {
   const { saveId } = req.body as { saveId: string }
-  if (!saveId) {
-    res.json({ success: false, error: 'saveId required' } satisfies ApiResponse<never>)
-    return
-  }
 
   stopSimulation()
   const loaded = await loadSavedGame(saveId)

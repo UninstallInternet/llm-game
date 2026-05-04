@@ -1,6 +1,35 @@
+import { z } from 'zod'
 import { llmCall } from './client.js'
 import type { JudgeResult, NPC, Location, Item, PhysicalState } from '../../shared/types.js'
 import { TAG_EFFECTS } from '../../shared/constants.js'
+import { updateContainerSearchTracking } from '../game/state.js'
+
+const statusSchema = z.enum(['alive', 'dead', 'unconscious', 'restrained']).nullable().optional()
+
+const judgeResponseSchema = z.object({
+  probability: z.number().min(1).max(99),
+  reasoning: z.string().default('No reasoning provided'),
+  narrativeHint: z.string().default('Something happened.'),
+  effects: z.object({
+    actorHealthDelta: z.number().default(0),
+    targetHealthDelta: z.number().default(0),
+    actorEnergyDelta: z.number().default(-5),
+    actorInjury: z.string().nullable().default(null),
+    targetInjury: z.string().nullable().default(null),
+    actorStatusChange: statusSchema.default(null),
+    targetStatusChange: statusSchema.default(null),
+    itemConsumed: z.boolean().default(false),
+    relationshipImpact: z.number().default(0),
+    actorTagChanges: z.array(z.string()).default([]),
+    targetTagChanges: z.array(z.string()).default([]),
+  }).optional().default({}),
+})
+
+const searchItemSchema = z.object({
+  name: z.string().min(1).default('mysterious item'),
+  tags: z.array(z.string()).default([]),
+  description: z.string().default('An item found during a search.'),
+})
 
 export interface JudgeInput {
   actor: { name: string; occupation: string; tags: string[]; health?: number; injuries?: string[] }
@@ -131,18 +160,13 @@ export async function judgeAction(input: JudgeInput): Promise<GameMasterResult> 
       cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
     }
 
-    const parsed = JSON.parse(cleaned) as {
-      probability: number
-      reasoning: string
-      narrativeHint: string
-      effects?: Partial<GameMasterResult['effects']>
-    }
+    const parsed = judgeResponseSchema.parse(JSON.parse(cleaned))
 
     const probability = Math.max(1, Math.min(99, parsed.probability))
     const outcome = rollOutcome(probability)
 
     // On failure, flip some effects (e.g., the actor takes damage instead of dealing it)
-    const effects = { ...DEFAULT_EFFECTS, ...(parsed.effects ?? {}) }
+    const effects = { ...DEFAULT_EFFECTS, ...parsed.effects }
 
     // FORCE minimum effects for physical actions on success — LLM often returns 0
     const actionLow = input.action.toLowerCase()
@@ -237,9 +261,8 @@ export async function searchContainer(
   const lastSearchTick = container.lastSearchTick ?? 0
   if (searchCount > 0 && currentTick - lastSearchTick < 6) return null
 
-  // Update search tracking
-  container.searchCount = searchCount + 1
-  container.lastSearchTick = currentTick
+  // Update search tracking via state layer
+  updateContainerSearchTracking(location.id, containerId, searchCount + 1, currentTick)
 
   const hasSkillMatch = npc.occupationTags.some((tag) =>
     container.expectedItemTypes.some((expected) =>
@@ -272,7 +295,7 @@ Generate ONE plausible, grounded item. Respond with ONLY JSON:
       cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
     }
 
-    const parsed = JSON.parse(cleaned) as { name: string; tags: string[]; description: string }
+    const parsed = searchItemSchema.parse(JSON.parse(cleaned))
 
     return {
       id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,

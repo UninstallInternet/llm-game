@@ -78,7 +78,7 @@ function buildCharacterDescription(npc: NPC): string {
 
 export async function generatePortrait(
   npc: NPC,
-  settingDescription: string
+  settingDescription: string // eslint-disable-line @typescript-eslint/no-unused-vars
 ): Promise<string | null> {
   if (!ENABLE_PORTRAITS || !apiKey) return null
 
@@ -111,7 +111,7 @@ export async function generatePortrait(
     // Clean up old versions
     const oldFiles = fs.readdirSync(PORTRAITS_DIR).filter((f) => f.startsWith(`${npc.id}_`) && f !== fileName)
     for (const old of oldFiles) {
-      try { fs.unlinkSync(path.join(PORTRAITS_DIR, old)) } catch {}
+      try { fs.unlinkSync(path.join(PORTRAITS_DIR, old)) } catch { /* intentional */ }
     }
 
     const localUrl = `/portraits/${fileName}`

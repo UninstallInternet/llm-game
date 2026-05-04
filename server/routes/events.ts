@@ -7,6 +7,16 @@ export const eventsRouter = Router()
 const clients: Set<Response> = new Set()
 
 eventsRouter.get('/', (req, res) => {
+  // SSE can't send headers, so validate token via query param
+  const expected = process.env.API_TOKEN
+  if (expected) {
+    const token = req.query.token as string | undefined
+    if (token !== expected) {
+      res.status(401).json({ success: false, error: 'Unauthorized — pass ?token=<API_TOKEN>' })
+      return
+    }
+  }
+
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',

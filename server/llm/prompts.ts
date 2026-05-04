@@ -325,8 +325,8 @@ ${formatRel(rel2to1, npc1.name)}
 Generate their ACTUAL conversation — real dialogue with real outcomes. JSON format:
 {
   "dialogue": [
-    { "speaker": "${npc1.name}", "says": "*action* \"speech\" — what they actually say and do" },
-    { "speaker": "${npc2.name}", "says": "*action* \"speech\" — their response" },
+    { "speaker": "${npc1.name}", "says": "*action* 'speech' — what they actually say and do" },
+    { "speaker": "${npc2.name}", "says": "*action* 'speech' — their response" },
     { "speaker": "${npc1.name}", "says": "follow-up" },
     { "speaker": "${npc2.name}", "says": "conclusion" }
   ],

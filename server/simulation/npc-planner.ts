@@ -1,8 +1,8 @@
 import { v4 as uuid } from 'uuid'
 import {
-  getWorld,
   getNpc,
   addNpcKnowledge,
+  addNpcInventoryItem,
   moveNpc,
   getTopMemories,
   applyPhysicalEffects,
@@ -21,9 +21,8 @@ import { broadcastEvent } from '../routes/events.js'
 import {
   ACTIVATION_THRESHOLD_LOW,
   ACTIVATION_THRESHOLD_HIGH,
-  MEMORY_DECAY_RATE,
 } from '../../shared/constants.js'
-import type { NPC, WorldState, NpcPlan, PlanStep, Item } from '../../shared/types.js'
+import type { NPC, WorldState, NpcPlan, PlanStep } from '../../shared/types.js'
 
 // ─── Activation Energy ───
 
@@ -663,7 +662,7 @@ async function executeSearch(npc: NPC, step: PlanStep, world: WorldState): Promi
   const item = await searchContainer(npc, location, unsearched.id, world.currentTick)
 
   if (item) {
-    npc.inventory.push(item)
+    addNpcInventoryItem(npc.id, item)
     step.status = 'completed'
     step.result = `Found ${item.name}`
 
@@ -829,22 +828,6 @@ async function executeAttempt(npc: NPC, step: PlanStep, world: WorldState): Prom
   return { executed: true, description: `${npc.name} ${step.description} — ${result.narrativeHint}` }
 }
 
-async function executeUseItem(npc: NPC, step: PlanStep, world: WorldState): Promise<{ executed: boolean; description: string }> {
-  // Find the item in inventory
-  const item = npc.inventory.find((i) =>
-    i.name.toLowerCase().includes(step.target.toLowerCase()) ||
-    step.target.toLowerCase().includes(i.name.toLowerCase())
-  )
-
-  if (!item) {
-    step.status = 'failed'
-    step.result = 'Item not in inventory'
-    return { executed: false, description: `${npc.name} doesn't have the required item` }
-  }
-
-  return executeAttempt(npc, { ...step, description: `${step.description} using ${item.name}` }, world)
-}
-
 function executeObserve(npc: NPC, step: PlanStep, world: WorldState): { executed: boolean; description: string } {
   const location = world.locations.find((l) => l.id === npc.currentLocationId)
   const npcsHere = world.npcs
@@ -879,10 +862,6 @@ export async function processNpcTurn(
   if (npc.physical.status === 'dead' || npc.physical.status === 'unconscious') {
     return { action: `${npc.physical.status}`, llmCalls: 0 }
   }
-
-  // Immobilized NPCs can still plan and talk, but can't physically move or execute non-social steps
-  const { IMMOBILIZING_TAGS } = await import('../../shared/constants.js')
-  const isImmobilized = (npc.stateFlags ?? []).some((f) => IMMOBILIZING_TAGS.has(f))
 
   // Clear completed/abandoned plans so NPCs can form new ones
   if (npc.activePlan?.status === 'completed' || npc.activePlan?.status === 'abandoned') {

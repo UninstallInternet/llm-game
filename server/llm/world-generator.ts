@@ -1,6 +1,5 @@
 import { v4 as uuid } from 'uuid'
 import { llmCall } from './client.js'
-import { buildWorldGenPrompt } from './prompts.js'
 import type {
   WorldState,
   NPC,
@@ -12,7 +11,6 @@ import type {
   KnowledgeEntry,
   ScheduleEntry,
   TimeOfDay,
-  Item,
 } from '../../shared/types.js'
 
 const OCCUPATION_TAG_MAP: Record<string, string[]> = {
@@ -136,7 +134,7 @@ async function callLlm(
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
       console.error(`[WorldGen:${label}] Attempt ${attempt} failed: ${msg}`)
-      if (attempt === 2) throw new Error(`${label} failed: ${msg}`)
+      if (attempt === 2) throw new Error(`${label} failed: ${msg}`, { cause: err })
       onProgress('retrying', `${label} retry...`)
     }
   }

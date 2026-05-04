@@ -7,7 +7,10 @@ export function useSSE(): void {
   const eventSourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
-    const es = new EventSource('/api/events')
+    // Pass API token as query param if configured (SSE can't send headers)
+    const token = (window as unknown as Record<string, string>).__API_TOKEN__
+    const url = token ? `/api/events?token=${encodeURIComponent(token)}` : '/api/events'
+    const es = new EventSource(url)
     eventSourceRef.current = es
 
     es.onmessage = (event) => {

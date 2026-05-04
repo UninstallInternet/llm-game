@@ -7,20 +7,31 @@ import { chatRoutes } from './routes/chat.js'
 import { worldRoutes } from './routes/world.js'
 import { actionRoutes } from './routes/action.js'
 import { eventsRouter, broadcastEvent } from './routes/events.js'
-import { startSimulation, stopSimulation } from './simulation/engine.js'
+import { requireToken } from './middleware/auth.js'
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001', 10)
 
-app.use(cors())
-app.use(express.json())
+// ─── CORS — restricted to localhost by default ───
+const allowedOrigins = process.env.CORS_ORIGIN === '*'
+  ? '*'
+  : (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:3000,http://localhost').split(',').map(o => o.trim())
+
+app.use(cors(
+  allowedOrigins === '*'
+    ? {}
+    : { origin: allowedOrigins, methods: ['GET', 'POST'] }
+))
+
+app.use(express.json({ limit: '100kb' }))
 app.use('/portraits', express.static(path.join(process.cwd(), 'public', 'portraits')))
 
-app.use('/api/game', gameRoutes)
-app.use('/api/chat', chatRoutes)
-app.use('/api/world', worldRoutes)
-app.use('/api/action', actionRoutes)
-app.use('/api/events', eventsRouter)
+// ─── Auth — optional, enabled when API_TOKEN is set ───
+app.use('/api/game', requireToken, gameRoutes)
+app.use('/api/chat', requireToken, chatRoutes)
+app.use('/api/world', requireToken, worldRoutes)
+app.use('/api/action', requireToken, actionRoutes)
+app.use('/api/events', eventsRouter) // SSE excluded — EventSource can't send headers
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' })

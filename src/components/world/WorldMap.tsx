@@ -143,10 +143,11 @@ export function WorldMap() {
   const setCurrentNpc = useGameStore((s) => s.setCurrentNpc)
   const addEventLog = useGameStore((s) => s.addEventLog)
 
+  const locationIds = world?.locations.map((l) => l.id).join(',') ?? ''
   const positions = useMemo(
     () => (world ? layoutNodes(world.locations) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [world?.locations.map((l) => l.id).join(',')]
+    [locationIds]
   )
 
   const handleMove = useCallback(

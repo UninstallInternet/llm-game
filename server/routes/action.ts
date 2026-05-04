@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { v4 as uuid } from 'uuid'
-import type { ApiResponse, PlayerActionRequest, PlayerActionResponse, Item } from '../../shared/types.js'
+import type { ApiResponse, PlayerActionRequest, PlayerActionResponse } from '../../shared/types.js'
 import {
   getWorld,
   getPlayer,
@@ -20,6 +20,7 @@ import {
 import { broadcastEvent } from './events.js'
 import { judgeAction, searchContainer } from '../llm/judge.js'
 import { onPlayerAction } from '../simulation/engine.js'
+import { validate, playerActionSchema } from '../middleware/validate.js'
 
 export const actionRoutes = Router()
 
@@ -42,7 +43,7 @@ export function clearActiveGroupSession(): void {
   activeGroupSession = null
 }
 
-actionRoutes.post('/', async (req, res) => {
+actionRoutes.post('/', validate(playerActionSchema), async (req, res) => {
   try {
     if (!isGameActive()) {
       res.json({ success: false, error: 'No active game' } satisfies ApiResponse<never>)
@@ -50,10 +51,6 @@ actionRoutes.post('/', async (req, res) => {
     }
 
     const { action } = req.body as PlayerActionRequest
-    if (!action?.trim()) {
-      res.json({ success: false, error: 'Action cannot be empty' } satisfies ApiResponse<never>)
-      return
-    }
 
     const world = getWorld()
     const player = getPlayer()
@@ -594,7 +591,7 @@ actionRoutes.post('/', async (req, res) => {
           },
         } satisfies ApiResponse<PlayerActionResponse>)
         return
-      } catch (err) {
+      } catch {
         // Fallback — GM resolved but reaction failed
         onPlayerAction()
         res.json({

@@ -1,4 +1,5 @@
 import type { NPC, WorldState, BeliefEntry } from '../../shared/types.js'
+import { updateNpcBeliefs } from '../game/state.js'
 
 // ─── Social Strategy Types ───
 
@@ -50,7 +51,7 @@ function paranoiaScore(npc: NPC): number {
 export function assessEncounter(
   npc: NPC,
   other: NPC,
-  world: WorldState
+  world: WorldState // eslint-disable-line @typescript-eslint/no-unused-vars
 ): EncounterAssessment {
   const rel = npc.relationships.find((r) => r.targetNpcId === other.id)
 
@@ -196,29 +197,34 @@ export function addBelief(
   confidence: number,
   tick: number
 ): void {
-  // Check if this belief already exists
-  const existing = npc.beliefs.find(
+  const existingIdx = npc.beliefs.findIndex(
     (b) => b.proposition.toLowerCase() === proposition.toLowerCase()
   )
 
-  if (existing) {
-    // Update confidence and corroboration
-    if (!existing.corroboratedBy.includes(sourceNpcId)) {
-      existing.corroboratedBy.push(sourceNpcId)
-      existing.confidence = Math.min(1, existing.confidence + 0.1)
-    }
+  let updatedBeliefs: BeliefEntry[]
+
+  if (existingIdx !== -1) {
+    const existing = npc.beliefs[existingIdx]
+    if (existing.corroboratedBy.includes(sourceNpcId)) return
+    updatedBeliefs = npc.beliefs.map((b, i) =>
+      i !== existingIdx ? b : {
+        ...b,
+        corroboratedBy: [...b.corroboratedBy, sourceNpcId],
+        confidence: Math.min(1, b.confidence + 0.1),
+      }
+    )
   } else {
-    // Keep beliefs capped at 30
-    if (npc.beliefs.length >= 30) {
-      npc.beliefs.shift()
-    }
-    npc.beliefs.push({
+    const newBelief: BeliefEntry = {
       proposition,
       source: sourceNpcId,
       confidence,
       corroboratedBy: [],
       contradictedBy: [],
       tick,
-    })
+    }
+    const base = npc.beliefs.length >= 30 ? npc.beliefs.slice(1) : npc.beliefs
+    updatedBeliefs = [...base, newBelief]
   }
+
+  updateNpcBeliefs(npc.id, updatedBeliefs)
 }

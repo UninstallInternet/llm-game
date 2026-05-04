@@ -11,6 +11,7 @@ import {
   isGameActive,
   persistGame,
 } from '../game/state.js'
+import { validate, moveRequestSchema } from '../middleware/validate.js'
 
 export const worldRoutes = Router()
 
@@ -48,17 +49,13 @@ worldRoutes.get('/location/:id', (req, res) => {
   })
 })
 
-worldRoutes.post('/move', async (req, res) => {
+worldRoutes.post('/move', validate(moveRequestSchema), async (req, res) => {
   if (!isGameActive()) {
     res.json({ success: false, error: 'No active game' } satisfies ApiResponse<never>)
     return
   }
 
   const { locationId } = req.body as { locationId: string }
-  if (!locationId) {
-    res.json({ success: false, error: 'locationId is required' } satisfies ApiResponse<never>)
-    return
-  }
 
   const player = getPlayer()
 

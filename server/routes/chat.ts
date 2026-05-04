@@ -18,10 +18,11 @@ import {
 } from '../game/state.js'
 import { v4 as uuid } from 'uuid'
 import { broadcastEvent } from './events.js'
+import { validate, chatRequestSchema, endChatSchema } from '../middleware/validate.js'
 
 export const chatRoutes = Router()
 
-chatRoutes.post('/', async (req, res) => {
+chatRoutes.post('/', validate(chatRequestSchema), async (req, res) => {
   try {
     if (!isGameActive()) {
       res.json({ success: false, error: 'No active game' } satisfies ApiResponse<never>)
@@ -29,16 +30,6 @@ chatRoutes.post('/', async (req, res) => {
     }
 
     const { npcId, message } = req.body as ChatRequest
-
-    if (!npcId) {
-      res.json({ success: false, error: 'npcId is required' } satisfies ApiResponse<never>)
-      return
-    }
-
-    if (!message?.trim()) {
-      res.json({ success: false, error: 'Message cannot be empty' } satisfies ApiResponse<never>)
-      return
-    }
 
     const npc = getNpc(npcId)
 
@@ -203,10 +194,8 @@ chatRoutes.post('/', async (req, res) => {
   }
 })
 
-chatRoutes.post('/end', (req, res) => {
+chatRoutes.post('/end', validate(endChatSchema), (req, res) => {
   const { npcId } = req.body as { npcId: string }
-  if (npcId) {
-    markNpcFree(npcId)
-  }
+  markNpcFree(npcId)
   res.json({ success: true })
 })
